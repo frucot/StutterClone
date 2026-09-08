@@ -1,0 +1,66 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  vst3:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows VST3
+          - os: ubuntu-24.04
+            name: Linux VST3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc g++ cmake ninja-build pkg-config \
+            libasound2-dev libjack-jackd2-dev \
+            libcurl4-openssl-dev libfreetype6-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev \
+            libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libglu1-mesa-dev mesa-common-dev \
+            libwebkit2gtk-4.1-dev xvfb
+
+      - name: Configure
+        shell: bash
+        run: |
+          CMAKE_ARGS=(
+            -S . -B build
+            -DCMAKE_BUILD_TYPE=Release
+            -DSTUTTERCLONE_COPY_PLUGIN_AFTER_BUILD=OFF
+            -DSTUTTERCLONE_FORMATS=VST3
+          )
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            xvfb-run --auto-servernum cmake "${CMAKE_ARGS[@]}"
+          else
+            cmake "${CMAKE_ARGS[@]}"
+          fi
+
+      - name: Build VST3
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            xvfb-run --auto-servernum cmake --build build --config Release --target StutterClone_VST3 --parallel
+          else
+            cmake --build build --config Release --target StutterClone_VST3 --parallel
+          fi
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: StutterClone-VST3-${{ runner.os }}
+          path: build/StutterClone_artefacts/**/VST3/StutterClone.vst3
+          if-no-files-found: error

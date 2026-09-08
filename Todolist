@@ -1,0 +1,34 @@
+Phase 1 : Infrastructure & Captation Audio (Buffer Circulaire)
+[x] 1.1 Build CMake : Générer le projet avec CMake Tools et vérifier que le binaire Standalone se compile sous macOS.
+
+[x] 1.2 Ring Buffer Audio : Instancier un juce::AudioBuffer<float> de 4 secondes dans prepareToPlay. Écrire le signal audio entrant en continu dans le buffer à chaque sample dans processBlock.
+
+[x] 1.3 Tête de Lecture : Implémenter la logique qui permet de relire le buffer à un décalage donné sans interrompre l'enregistrement continu du flux entrant.
+
+Phase 2 : Déclenchement MIDI & Synchronisation DAW
+[x] 2.1 Support MIDI : Vérifier que NEEDS_MIDI_INPUT TRUE est bien configuré dans CMake et que le plugin accepte les événements MIDI dans le DAW.
+
+[x] 2.2 Lecture du Tempo : Récupérer le tempo actuel (BPM) et la position du transport via getPlayHead()->getPosition().
+
+[x] 2.3 Calcul de la Longueur de Boucle (Stutter Rate) : Convertir une division rythmique (1/16, 1/32, 1/64) en un nombre exact d'échantillons audio en fonction du BPM courant et de la fréquence d'échantillonnage (sampleRate).
+
+[x] 2.4 Anti-clic (Crossfading) : Ajouter un algorithme de fondu enchaîné rapide (128 samples / ~3ms) lorsque la tête de lecture effectue un saut pour éviter les bruits de découpage.
+
+Phase 3 : Moteur de "Gestures" & Modulation
+[x] 3.1 Mapping des Notes MIDI : Associer des plages de notes MIDI à des grilles de découpage spécifiques (ex: Do3 = 1/8 bar, Ré3 = 1/16 bar, Mi3 = 1/32 bar).
+
+[x] 3.2 Modulation Temporelle (Quantize / Sweeps) : Créer une rampe de variation (interpolateur) pour faire évoluer la fréquence du Stutter sur la durée d'enfoncement de la touche MIDI (ex: passer progressivement de 1/8 à 1/64 sur 1 mesure).
+
+[x] 3.3 Module Buffer Reverse / Pan : Ajouter l'option d'inverser le sens de lecture du fragment de boucle (Reverse) ou de faire alterner le son entre la gauche et la droite à chaque répétition.
+
+Phase 4 : Chaîne DSP d'Effets (DSP Module JUCE)
+[x] 4.1 Filtre Résonnant : Intégrer juce::dsp::StateVariableFilter pour appliquer un balayage de filtre passe-bas/passe-haut contrôlé par la Gesture.
+
+[x] 4.2 Bitcrusher / Lo-Fi : Développer un module de réduction de résolution binaire (quantification) et de sous-échantillonnage.
+
+[x] 4.3 Delay & Reverb : Lier les modules de la bibliothèque juce_dsp en fin de chaîne d'effet.
+
+Phase 5 : Interface Graphique & CI Cross-Platform
+[x] 5.1 Visualiseur d'Onde : Créer une vue dynamique affichant la forme d'onde enregistrée dans le buffer et les limites de la boucle active en temps réel.
+
+[x] 5.2 GitHub Actions (CI) : Configurer un script .github/workflows/build.yml pour compiler automatiquement les versions Windows (.vst3) et Linux (.vst3) via les serveurs d'intégration continue de GitHub.
