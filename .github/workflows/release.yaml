@@ -1,0 +1,114 @@
+name: Build and Release StutterClone
+
+on:
+  push:
+    tags:
+      - 'v*' # Runs when you push a tag such as v1.0.0, v0.02, etc.
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: StutterClone-macOS.zip
+            formats: "VST3;AU"
+          - os: windows-latest
+            artifact_name: StutterClone-Windows.zip
+            formats: "VST3"
+          - os: ubuntu-latest
+            artifact_name: StutterClone-Linux.zip
+            formats: "VST3"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc g++ cmake ninja-build pkg-config \
+            libasound2-dev libjack-jackd2-dev ladspa-sdk \
+            libcurl4-openssl-dev libfreetype6-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev \
+            libglu1-mesa-dev mesa-common-dev libgl1-mesa-dev \
+            libwebkit2gtk-4.1-dev xvfb
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          CMAKE_ARGS=(
+            -S . -B build
+            -DCMAKE_BUILD_TYPE=Release
+            -DSTUTTERCLONE_COPY_PLUGIN_AFTER_BUILD=OFF
+            -DSTUTTERCLONE_FORMATS=${{ matrix.formats }}
+          )
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            xvfb-run --auto-servernum cmake "${CMAKE_ARGS[@]}"
+          else
+            cmake "${CMAKE_ARGS[@]}"
+          fi
+
+      - name: Build Plugin
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            xvfb-run --auto-servernum cmake --build build --config Release --parallel
+          else
+            cmake --build build --config Release --parallel
+          fi
+
+      - name: Compress Artifacts (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ -d build/StutterClone_artefacts/Release ]; then
+            ARTEFACT_DIR=build/StutterClone_artefacts/Release
+          else
+            ARTEFACT_DIR=build/StutterClone_artefacts
+          fi
+          (cd "$ARTEFACT_DIR" && zip -r "$GITHUB_WORKSPACE/${{ matrix.artifact_name }}" .)
+
+      - name: Compress Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $src = if (Test-Path "build\StutterClone_artefacts\Release") {
+            "build\StutterClone_artefacts\Release\*"
+          } else {
+            "build\StutterClone_artefacts\*"
+          }
+          Compress-Archive -Path $src -DestinationPath ${{ matrix.artifact_name }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*/*
+          generate_release_notes: true
