@@ -49,7 +49,7 @@ jobs:
             -S . -B build
             -DCMAKE_BUILD_TYPE=Release
             -DSTUTTERCLONE_COPY_PLUGIN_AFTER_BUILD=OFF
-            -DSTUTTERCLONE_FORMATS=${{ matrix.formats }}
+            "-DSTUTTERCLONE_FORMATS=${{ matrix.formats }}"
           )
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             xvfb-run --auto-servernum cmake "${CMAKE_ARGS[@]}"
