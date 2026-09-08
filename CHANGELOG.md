@@ -3,7 +3,14 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the project uses a public display version (`0.01`) alongside CMake semver (`0.0.1`).
+and the public display version now matches the CMake semver (`0.0.2`).
+
+## [0.0.2] - 2026-09-08
+
+### Fixed
+
+- Audio thread stall on non-finite host BPM and on a quantised trigger while transport is stopped
+- Torn waveform snapshot copies read from the editor thread
 
 ## [0.01] - 2026-09-08
 
