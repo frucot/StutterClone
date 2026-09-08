@@ -88,6 +88,7 @@ private:
     void capturePlayHead() noexcept;
     void handleMidiEvent (const juce::uint8* data, int numBytes) noexcept;
     void processAudioSlice (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
+    void renderAudioSlice (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
     void processFxSlice (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
     void writeToRingBuffer (const juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
     void armPending (int midiNote) noexcept;
@@ -122,12 +123,14 @@ private:
     double ppqCursor = 0.0;
     double ppqPerSample = 0.0;
     double pendingGridPpq = 0.0;
+    // Host tempo bounded to [20, 999] so ppqPerSample and loop lengths stay sane; audio thread only.
+    double clampedBpm = 120.0;
 
+    bool hasSyncedPpq = false;
     bool stutterIsOn = false;
     bool hasWrapped = false;
     bool reversePlayback = false;
     bool pendingArmed = false;
-    int heldNoteCount = 0;
     int stutterReadOffset = 0;
     int loopLengthSamples = 0;
     int loopStartInRing = 0;
@@ -139,7 +142,6 @@ private:
     int lastStepIndex = -1;
     double gestureBeat = 0.0;
     stutter::Action playingAction {};
-    std::array<uint8_t, 128> notesHeld {};
 
     std::atomic<float> currentBpm { 120.0f };
     std::atomic<double> ppqPosition { 0.0 };

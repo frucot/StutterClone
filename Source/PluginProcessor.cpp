@@ -12,15 +12,34 @@ namespace
         dest = src;
     }
 
-    uint16_t maskFromNotes (const std::array<uint8_t, 128>& notesHeld) noexcept
+    int wrapRingIndex (int index, int size) noexcept
     {
-        uint16_t mask = 0;
+        if (size <= 0)
+            return 0;
 
-        for (int i = 0; i < stutter::numGestureNotes; ++i)
-            if (notesHeld[static_cast<size_t> (stutter::noteForGestureIndex (i))] != 0)
-                mask = static_cast<uint16_t> (mask | (1u << i));
+        if (index >= size)
+            index -= size;
 
-        return mask;
+        if (index < 0)
+            index += size;
+
+        return juce::jlimit (0, size - 1, index);
+    }
+
+    double wrapGestureBeat (double beat) noexcept
+    {
+        if (! std::isfinite (beat))
+            return 0.0;
+
+        if (beat >= stutter::measureBeats || beat < 0.0)
+        {
+            beat = std::fmod (beat, stutter::measureBeats);
+
+            if (beat < 0.0)
+                beat += stutter::measureBeats;
+        }
+
+        return beat;
     }
 }
 
@@ -72,11 +91,12 @@ void StutterCloneAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
 
     writePosition = 0;
     validSamplesInRing = 0;
+    clampedBpm = 120.0;
+    hasSyncedPpq = false;
     stutterIsOn = false;
     hasWrapped = false;
     reversePlayback = false;
     pendingArmed = false;
-    heldNoteCount = 0;
     stutterReadOffset = 0;
     loopLengthSamples = 0;
     loopStartInRing = 0;
@@ -102,8 +122,9 @@ void StutterCloneAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
 
 void StutterCloneAudioProcessor::releaseResources()
 {
+    clampedBpm = 120.0;
+    hasSyncedPpq = false;
     stutterIsOn = false;
-    heldNoteCount = 0;
     fadeInRemaining = 0;
     fadeOutRemaining = 0;
     resetHeldNotes();
@@ -176,21 +197,35 @@ void StutterCloneAudioProcessor::capturePlayHead() noexcept
         if (const auto position = playHead->getPosition())
         {
             if (const auto bpm = position->getBpm())
-                currentBpm.store (static_cast<float> (*bpm), std::memory_order_relaxed);
+            {
+                const double hostBpm = std::isfinite (*bpm) ? *bpm : 120.0;
+                currentBpm.store (static_cast<float> (hostBpm), std::memory_order_relaxed);
+                clampedBpm = juce::jlimit (20.0, 999.0, hostBpm);
+            }
 
             if (const auto ppq = position->getPpqPosition())
             {
-                ppqCursor = *ppq;
-                usedHostPpq = true;
+                // Resync only while the transport advances, otherwise a frozen host ppq would stall pending gestures.
+                if (std::isfinite (*ppq) && (position->getIsPlaying() || ! hasSyncedPpq))
+                {
+                    ppqCursor = *ppq;
+                    hasSyncedPpq = true;
+                    usedHostPpq = true;
+                }
             }
         }
     }
 
-    const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
-    ppqPerSample = (bpm / 60.0) / juce::jmax (1.0, currentSampleRate);
+    ppqPerSample = (clampedBpm / 60.0) / juce::jmax (1.0, currentSampleRate);
+
+    if (! std::isfinite (ppqPerSample) || ppqPerSample <= 0.0)
+        ppqPerSample = 0.0;
 
     if (! usedHostPpq)
-        ppqCursor = ppqPosition.load (std::memory_order_relaxed);
+    {
+        const double fallback = ppqPosition.load (std::memory_order_relaxed);
+        ppqCursor = std::isfinite (fallback) ? fallback : 0.0;
+    }
 }
 
 int StutterCloneAudioProcessor::currentQuantizeIndex() const noexcept
@@ -250,15 +285,14 @@ void StutterCloneAudioProcessor::handleMidiEvent (const juce::uint8* data, int n
     if (! stutter::isGestureNote (note))
         return;
 
+    const int gestureIndex = stutter::gestureIndexForNote (note);
+    const auto bit = static_cast<uint16_t> (1u << gestureIndex);
+    uint16_t mask = heldGestureMask.load (std::memory_order_relaxed);
+
     if (isNoteOn && velocity > 0)
     {
-        if (notesHeld[static_cast<size_t> (note)] == 0)
-        {
-            notesHeld[static_cast<size_t> (note)] = 1;
-            ++heldNoteCount;
-        }
-
-        heldGestureMask.store (maskFromNotes (notesHeld), std::memory_order_relaxed);
+        mask = static_cast<uint16_t> (mask | bit);
+        heldGestureMask.store (mask, std::memory_order_relaxed);
 
         const int highest = findHighestHeldGestureNote();
 
@@ -277,15 +311,10 @@ void StutterCloneAudioProcessor::handleMidiEvent (const juce::uint8* data, int n
 
     if (isNoteOff)
     {
-        if (notesHeld[static_cast<size_t> (note)] != 0)
-        {
-            notesHeld[static_cast<size_t> (note)] = 0;
-            heldNoteCount = juce::jmax (0, heldNoteCount - 1);
-        }
+        mask = static_cast<uint16_t> (mask & static_cast<uint16_t> (~bit));
+        heldGestureMask.store (mask, std::memory_order_relaxed);
 
-        heldGestureMask.store (maskFromNotes (notesHeld), std::memory_order_relaxed);
-
-        if (heldNoteCount == 0)
+        if (mask == 0)
         {
             cancelPending();
             stopStutter();
@@ -310,53 +339,65 @@ void StutterCloneAudioProcessor::processAudioSlice (juce::AudioBuffer<float>& bu
     if (numSamples <= 0)
         return;
 
-    int triggerOffset = numSamples;
+    int offset = 0;
+    int remaining = numSamples;
 
-    if (pendingArmed && pendingNote >= 0 && ppqPerSample > 0.0)
+    // Two passes suffice: the first trigger disarms the pending gesture, so the second can never split again.
+    for (int pass = 0; remaining > 0 && pass < 2; ++pass)
     {
-        if (ppqCursor >= pendingGridPpq)
-        {
-            triggerOffset = 0;
-        }
-        else
-        {
-            const double samplesAway = (pendingGridPpq - ppqCursor) / ppqPerSample;
-            triggerOffset = juce::roundToInt (samplesAway);
-        }
-    }
+        int split = remaining;
 
-    if (pendingArmed && triggerOffset < numSamples)
-    {
-        triggerOffset = juce::jlimit (0, numSamples, triggerOffset);
-
-        if (triggerOffset > 0)
+        if (pendingArmed && pendingNote >= 0 && ppqPerSample > 0.0
+            && std::isfinite (ppqPerSample) && std::isfinite (ppqCursor)
+            && std::isfinite (pendingGridPpq))
         {
-            writeToRingBuffer (buffer, startSample, triggerOffset);
-
-            if (stutterIsOn || fadeOutRemaining > 0)
+            if (ppqCursor >= pendingGridPpq)
             {
-                // Should not happen while pending, but keep FX tails if any.
-                processFxSlice (buffer, startSample, triggerOffset);
+                split = 0;
+            }
+            else
+            {
+                const double samplesAway = (pendingGridPpq - ppqCursor) / ppqPerSample;
+
+                if (! std::isfinite (samplesAway) || samplesAway <= 0.0)
+                    split = 0;
+                else if (samplesAway >= static_cast<double> (remaining))
+                    split = remaining;
+                else
+                    split = juce::jlimit (0, remaining, juce::roundToInt (samplesAway));
+            }
+        }
+
+        if (pendingArmed && pendingNote >= 0 && split < remaining)
+        {
+            if (split > 0)
+            {
+                renderAudioSlice (buffer, startSample + offset, split);
+                ppqCursor += static_cast<double> (split) * ppqPerSample;
+                offset += split;
+                remaining -= split;
             }
 
-            ppqCursor += triggerOffset * ppqPerSample;
+            const int noteToStart = pendingNote;
+            cancelPending();
+            startStutter (noteToStart);
+            stutterActive.store (stutterIsOn, std::memory_order_relaxed);
+            continue;
         }
 
-        const int noteToStart = pendingNote;
-        cancelPending();
-        startStutter (noteToStart);
-        stutterActive.store (stutterIsOn, std::memory_order_relaxed);
-
-        const int remainStart = startSample + triggerOffset;
-        const int remainCount = numSamples - triggerOffset;
-
-        if (remainCount > 0)
-            processAudioSlice (buffer, remainStart, remainCount);
-        else
-            return;
-
-        return;
+        renderAudioSlice (buffer, startSample + offset, remaining);
+        ppqCursor += static_cast<double> (remaining) * ppqPerSample;
+        remaining = 0;
+        break;
     }
+}
+
+void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buffer,
+                                                   int startSample,
+                                                   int numSamples) noexcept
+{
+    if (numSamples <= 0)
+        return;
 
     writeToRingBuffer (buffer, startSample, numSamples);
 
@@ -367,7 +408,7 @@ void StutterCloneAudioProcessor::processAudioSlice (juce::AudioBuffer<float>& bu
     {
         const int numChannels = juce::jmin (buffer.getNumChannels(), ringBuffer.getNumChannels());
         const int fadeNorm = juce::jmax (1, crossfadeSamples);
-        const double beatsPerSample = ppqPerSample;
+        const double beatsPerSample = std::isfinite (ppqPerSample) ? juce::jmax (0.0, ppqPerSample) : 0.0;
 
         for (int i = 0; i < numSamples; ++i)
         {
@@ -383,10 +424,7 @@ void StutterCloneAudioProcessor::processAudioSlice (juce::AudioBuffer<float>& bu
                     --fadeInRemaining;
                 }
 
-                gestureBeat += beatsPerSample;
-
-                while (gestureBeat >= stutter::measureBeats)
-                    gestureBeat -= stutter::measureBeats;
+                gestureBeat = wrapGestureBeat (gestureBeat + beatsPerSample);
 
                 const auto step = stutter::evaluateAction (playingAction, gestureBeat);
                 const int stepIndex = stutter::stepIndexForBeat (gestureBeat, playingAction.gridResolution);
@@ -445,7 +483,6 @@ void StutterCloneAudioProcessor::processAudioSlice (juce::AudioBuffer<float>& bu
     }
 
     processFxSlice (buffer, startSample, numSamples);
-    ppqCursor += numSamples * ppqPerSample;
 }
 
 void StutterCloneAudioProcessor::applyEvaluatedStep (const stutter::EvaluatedStep& step) noexcept
@@ -464,7 +501,6 @@ void StutterCloneAudioProcessor::processFxSlice (juce::AudioBuffer<float>& buffe
                                                  int numSamples) noexcept
 {
     const auto step = stutter::evaluateAction (playingAction, gestureBeat);
-    const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
     const int delayDiv = juce::jlimit (0, 3, playingAction.delayDivision);
 
     GestureDspChain::Settings settings;
@@ -479,7 +515,7 @@ void StutterCloneAudioProcessor::processFxSlice (juce::AudioBuffer<float>& buffe
     settings.delayOn = step.delayOn;
     settings.delayMix = step.delayMix;
     settings.delayFeedback = step.delayFeedback;
-    settings.delaySamples = static_cast<float> ((stutter::beatsPerDivision[static_cast<size_t> (delayDiv)] * 60.0 / bpm) * currentSampleRate);
+    settings.delaySamples = static_cast<float> ((stutter::beatsPerDivision[static_cast<size_t> (delayDiv)] * 60.0 / clampedBpm) * currentSampleRate);
     settings.reverbOn = step.reverbOn;
     settings.reverbMix = step.reverbMix;
     settings.reverbSize = step.reverbSize;
@@ -492,16 +528,39 @@ void StutterCloneAudioProcessor::writeToRingBuffer (const juce::AudioBuffer<floa
                                                     int startSample,
                                                     int numSamples) noexcept
 {
-    if (ringBufferSize <= 0)
+    if (ringBufferSize <= 0 || numSamples <= 0)
         return;
 
+    const int bufferSamples = buffer.getNumSamples();
+
+    if (startSample < 0 || startSample >= bufferSamples)
+        return;
+
+    numSamples = juce::jmin (numSamples, bufferSamples - startSample);
+
     const int numChannels = juce::jmin (buffer.getNumChannels(), ringBuffer.getNumChannels());
+
+    if (numChannels <= 0)
+        return;
+
+    if (writePosition < 0 || writePosition >= ringBufferSize)
+        writePosition = 0;
+
     int remaining = numSamples;
     int inputPos = startSample;
 
     while (remaining > 0)
     {
         const int chunk = juce::jmin (remaining, ringBufferSize - writePosition);
+
+        if (chunk <= 0)
+        {
+            if (writePosition == 0)
+                break;
+
+            writePosition = 0;
+            continue;
+        }
 
         for (int channel = 0; channel < numChannels; ++channel)
             ringBuffer.copyFrom (channel, writePosition, buffer, channel, inputPos, chunk);
@@ -537,10 +596,7 @@ void StutterCloneAudioProcessor::startStutter (int midiNote) noexcept
     if (loopLengthSamples < 2)
         return;
 
-    loopStartInRing = writePosition - loopLengthSamples;
-
-    if (loopStartInRing < 0)
-        loopStartInRing += ringBufferSize;
+    loopStartInRing = wrapRingIndex (writePosition - loopLengthSamples, ringBufferSize);
 
     stutterReadOffset = 0;
     hasWrapped = false;
@@ -573,16 +629,16 @@ void StutterCloneAudioProcessor::stopStutter() noexcept
 
 void StutterCloneAudioProcessor::resetHeldNotes() noexcept
 {
-    notesHeld.fill (0);
-    heldNoteCount = 0;
     heldGestureMask.store (0, std::memory_order_relaxed);
 }
 
 int StutterCloneAudioProcessor::findHighestHeldGestureNote() const noexcept
 {
-    for (int note = stutter::lastGestureNote; note >= stutter::firstGestureNote; --note)
-        if (notesHeld[static_cast<size_t> (note)] != 0)
-            return note;
+    const uint16_t mask = heldGestureMask.load (std::memory_order_relaxed);
+
+    for (int i = stutter::numGestureNotes - 1; i >= 0; --i)
+        if ((mask & static_cast<uint16_t> (1u << i)) != 0)
+            return stutter::noteForGestureIndex (i);
 
     return -1;
 }
@@ -591,22 +647,20 @@ int StutterCloneAudioProcessor::computeLoopLengthSamples() const noexcept
 {
     const auto step = stutter::evaluateAction (playingAction, gestureBeat);
     const double beats = stutter::beatsPerDivision[static_cast<size_t> (step.divisionIndex)];
-    const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
-    const int samples = juce::roundToInt ((beats * 60.0 / bpm) * currentSampleRate);
+    const int samples = juce::roundToInt ((beats * 60.0 / clampedBpm) * currentSampleRate);
     return juce::jlimit (2, juce::jmax (2, ringBufferSize), samples);
 }
 
 float StutterCloneAudioProcessor::readRingAtLoopOffset (int channel, int offset) const noexcept
 {
-    int index = loopStartInRing + offset;
+    const int size = juce::jmin (ringBufferSize, ringBuffer.getNumSamples());
+    const int numChannels = ringBuffer.getNumChannels();
 
-    if (index >= ringBufferSize)
-        index -= ringBufferSize;
+    if (size <= 0 || numChannels <= 0)
+        return 0.0f;
 
-    if (index < 0)
-        index += ringBufferSize;
-
-    const int safeChannel = juce::jlimit (0, ringBuffer.getNumChannels() - 1, channel);
+    const int safeChannel = juce::jlimit (0, numChannels - 1, channel);
+    const int index = wrapRingIndex (loopStartInRing + offset, size);
     return ringBuffer.getSample (safeChannel, index);
 }
 
@@ -762,14 +816,14 @@ void StutterCloneAudioProcessor::publishWaveformSnapshot() noexcept
     if (! editorOpen.load (std::memory_order_relaxed))
         return;
 
-    const int size = ringBufferSize;
+    const int size = juce::jmin (ringBufferSize, ringBuffer.getNumSamples());
+    const int channels = juce::jmin (2, ringBuffer.getNumChannels());
 
-    if (size <= 1)
+    if (size <= 1 || channels <= 0)
         return;
 
     const int dest = 1 - waveformPublished.load (std::memory_order_relaxed);
     auto& snap = waveformSnapshots[static_cast<size_t> (dest)];
-    const int channels = juce::jmin (2, ringBuffer.getNumChannels());
 
     for (int bin = 0; bin < waveformBins; ++bin)
     {
@@ -797,13 +851,10 @@ void StutterCloneAudioProcessor::publishWaveformSnapshot() noexcept
     }
 
     const float inv = 1.0f / static_cast<float> (size);
-    int playIndex = loopStartInRing + stutterReadOffset;
+    const int playIndex = wrapRingIndex (loopStartInRing + stutterReadOffset, size);
 
-    if (playIndex >= size)
-        playIndex -= size;
-
-    snap.writePos = static_cast<float> (writePosition) * inv;
-    snap.loopStart = static_cast<float> (loopStartInRing) * inv;
+    snap.writePos = static_cast<float> (wrapRingIndex (writePosition, size)) * inv;
+    snap.loopStart = static_cast<float> (wrapRingIndex (loopStartInRing, size)) * inv;
     snap.loopLength = static_cast<float> (juce::jmax (0, loopLengthSamples)) * inv;
     snap.playPos = static_cast<float> (playIndex) * inv;
     snap.loopActive = stutterIsOn;
