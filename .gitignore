@@ -35,3 +35,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local notes / reference (not part of the public source)
+cursorrules.md
+izotope-stutteredit-help.pdf
+Todolist
