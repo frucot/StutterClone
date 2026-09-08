@@ -42,7 +42,6 @@ public:
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
     PresetBank& getPresetBank() noexcept { return presetBank; }
     const Preset& getWorkingPreset() const noexcept { return workingPreset; }
-    Preset& getWorkingPreset() noexcept { return workingPreset; }
 
     void publishWorkingPreset();
     void replaceWorkingPreset (Preset preset, bool setQuantizeParam);
@@ -155,6 +154,7 @@ private:
     std::atomic<uint16_t> heldGestureMask { 0 };
     std::atomic<bool> editorOpen { false };
     std::atomic<int> waveformPublished { 0 };
+    std::atomic<uint32_t> waveformSequence { 0 };
     std::array<WaveformSnapshot, 2> waveformSnapshots {};
     int samplesUntilWaveformUpdate = 0;
     int waveformUpdateInterval = 1024;

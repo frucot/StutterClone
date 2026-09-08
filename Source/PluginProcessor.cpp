@@ -112,6 +112,7 @@ void StutterCloneAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     waveformSnapshots[0] = {};
     waveformSnapshots[1] = {};
     waveformPublished.store (0, std::memory_order_relaxed);
+    waveformSequence.store (waveformSequence.load (std::memory_order_relaxed) + 1u, std::memory_order_release);
     resetHeldNotes();
     cancelPending();
     stutterActive.store (false, std::memory_order_relaxed);
@@ -807,8 +808,17 @@ void StutterCloneAudioProcessor::setEditorOpen (bool shouldBeOpen) noexcept
 
 void StutterCloneAudioProcessor::copyWaveformSnapshot (WaveformSnapshot& dest) const noexcept
 {
-    const int index = waveformPublished.load (std::memory_order_acquire);
-    dest = waveformSnapshots[static_cast<size_t> (juce::jlimit (0, 1, index))];
+    // A torn copy needs two publishes, so an unchanged sequence proves the writer never touched this slot.
+    for (int attempt = 0; attempt < 4; ++attempt)
+    {
+        const uint32_t sequence = waveformSequence.load (std::memory_order_acquire);
+        const int index = waveformPublished.load (std::memory_order_acquire);
+        dest = waveformSnapshots[static_cast<size_t> (juce::jlimit (0, 1, index))];
+        std::atomic_thread_fence (std::memory_order_acquire);
+
+        if (waveformSequence.load (std::memory_order_relaxed) == sequence)
+            return;
+    }
 }
 
 void StutterCloneAudioProcessor::publishWaveformSnapshot() noexcept
@@ -861,6 +871,7 @@ void StutterCloneAudioProcessor::publishWaveformSnapshot() noexcept
     snap.valid = validSamplesInRing > 1;
 
     waveformPublished.store (dest, std::memory_order_release);
+    waveformSequence.store (waveformSequence.load (std::memory_order_relaxed) + 1u, std::memory_order_release);
 }
 
 void StutterCloneAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
