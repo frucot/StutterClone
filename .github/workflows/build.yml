@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -59,7 +59,7 @@ jobs:
           fi
 
       - name: Upload VST3
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: StutterClone-VST3-${{ runner.os }}
           path: build/StutterClone_artefacts/**/VST3/StutterClone.vst3
