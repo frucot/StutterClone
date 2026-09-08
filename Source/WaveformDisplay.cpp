@@ -64,7 +64,7 @@ void WaveformDisplay::paint (juce::Graphics& g)
     {
         g.setColour (waveColour.withAlpha (0.45f));
         g.setFont (juce::Font { juce::FontOptions { 13.0f } });
-        g.drawText ("Waiting for audio…", bounds, juce::Justification::centred);
+        g.drawText ("Waiting for audio...", bounds, juce::Justification::centred);
         return;
     }
 

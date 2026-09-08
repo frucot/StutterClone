@@ -1,37 +1,152 @@
 #include "PluginEditor.h"
+#include "UiColours.h"
+#include "Version.h"
 
 namespace
 {
-    const juce::Colour backgroundColour { 0xff101218 };
-    const juce::Colour panelColour     { 0xff1b1f2b };
-    const juce::Colour accentColour    { 0xff6ee7ff };
-    const juce::Colour inactiveColour  { 0xffff6b7d };
-    const juce::Colour textColour      { 0xffe8edf7 };
-
-    const char* divisionName (int index)
+    class SavePresetOverlay final : public juce::Component
     {
-        constexpr const char* names[] { "1/4", "1/8", "1/16", "1/32", "1/64" };
-        const int safe = juce::jlimit (0, 4, index);
-        return names[safe];
-    }
+    public:
+        std::function<void (juce::String)> onSave;
+        std::function<void()> onCancel;
+
+        SavePresetOverlay()
+        {
+            setOpaque (false);
+            setWantsKeyboardFocus (true);
+
+            title.setText ("Save Preset As", juce::dontSendNotification);
+            title.setJustificationType (juce::Justification::centred);
+            title.setColour (juce::Label::textColourId, UiColours::text);
+            title.setFont (juce::Font { juce::FontOptions { 16.0f, juce::Font::bold } });
+            addAndMakeVisible (title);
+
+            nameEditor.setColour (juce::TextEditor::backgroundColourId, UiColours::background);
+            nameEditor.setColour (juce::TextEditor::textColourId, UiColours::text);
+            nameEditor.setColour (juce::TextEditor::outlineColourId, UiColours::accent.withAlpha (0.45f));
+            nameEditor.setColour (juce::TextEditor::focusedOutlineColourId, UiColours::accent);
+            nameEditor.setColour (juce::TextEditor::highlightColourId, UiColours::accent.withAlpha (0.35f));
+            nameEditor.setJustification (juce::Justification::centredLeft);
+            nameEditor.setFont (juce::Font { juce::FontOptions { 15.0f } });
+            nameEditor.onReturnKey = [this] { confirm(); };
+            nameEditor.onEscapeKey = [this] { cancel(); };
+            addAndMakeVisible (nameEditor);
+
+            saveButton.setButtonText ("Save");
+            saveButton.setColour (juce::TextButton::buttonColourId, UiColours::accent);
+            saveButton.setColour (juce::TextButton::textColourOffId, UiColours::background);
+            saveButton.onClick = [this] { confirm(); };
+            addAndMakeVisible (saveButton);
+
+            cancelButton.setButtonText ("Cancel");
+            cancelButton.setColour (juce::TextButton::buttonColourId, UiColours::background);
+            cancelButton.setColour (juce::TextButton::textColourOffId, UiColours::text);
+            cancelButton.onClick = [this] { cancel(); };
+            addAndMakeVisible (cancelButton);
+        }
+
+        void setNameText (const juce::String& name)
+        {
+            nameEditor.setText (name, juce::dontSendNotification);
+            nameEditor.selectAll();
+        }
+
+        void focusNameEditor()
+        {
+            nameEditor.grabKeyboardFocus();
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (juce::Colours::black.withAlpha (0.55f));
+
+            auto panel = panelBounds().toFloat();
+            g.setColour (UiColours::panel);
+            g.fillRoundedRectangle (panel, 8.0f);
+            g.setColour (UiColours::accent.withAlpha (0.45f));
+            g.drawRoundedRectangle (panel, 8.0f, 1.5f);
+        }
+
+        void resized() override
+        {
+            auto panel = panelBounds().reduced (16);
+            title.setBounds (panel.removeFromTop (24));
+            panel.removeFromTop (12);
+            nameEditor.setBounds (panel.removeFromTop (28));
+            panel.removeFromTop (14);
+            auto buttons = panel.removeFromTop (28);
+            cancelButton.setBounds (buttons.removeFromRight (90));
+            buttons.removeFromRight (8);
+            saveButton.setBounds (buttons.removeFromRight (90));
+        }
+
+        void mouseDown (const juce::MouseEvent& event) override
+        {
+            if (! panelBounds().contains (event.getPosition()))
+                cancel();
+        }
+
+        bool keyPressed (const juce::KeyPress& key) override
+        {
+            if (key == juce::KeyPress::escapeKey)
+            {
+                cancel();
+                return true;
+            }
+
+            return false;
+        }
+
+    private:
+        juce::Rectangle<int> panelBounds() const
+        {
+            return getLocalBounds().withSizeKeepingCentre (320, 140);
+        }
+
+        void confirm()
+        {
+            if (onSave)
+                onSave (nameEditor.getText());
+        }
+
+        void cancel()
+        {
+            if (onCancel)
+                onCancel();
+        }
+
+        juce::Label title;
+        juce::TextEditor nameEditor;
+        juce::TextButton saveButton;
+        juce::TextButton cancelButton;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SavePresetOverlay)
+    };
 }
 
 StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterCloneAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p), waveformDisplay (p)
 {
     processorRef.setEditorOpen (true);
+    processorRef.addChangeListener (this);
+
     titleLabel.setText ("StutterClone", juce::dontSendNotification);
     titleLabel.setJustificationType (juce::Justification::centredLeft);
-    titleLabel.setColour (juce::Label::textColourId, textColour);
+    titleLabel.setColour (juce::Label::textColourId, UiColours::text);
     titleLabel.setFont (juce::Font { juce::FontOptions { 22.0f, juce::Font::bold } });
     addAndMakeVisible (titleLabel);
-    addAndMakeVisible (waveformDisplay);
+
+    versionLabel.setText (STUTTERCLONE_VERSION_STRING, juce::dontSendNotification);
+    versionLabel.setJustificationType (juce::Justification::centredRight);
+    versionLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.45f));
+    versionLabel.setFont (juce::Font { juce::FontOptions { 13.0f } });
+    addAndMakeVisible (versionLabel);
 
     auto setupCaption = [this] (juce::Label& label, const juce::String& text)
     {
         label.setText (text, juce::dontSendNotification);
         label.setJustificationType (juce::Justification::centredLeft);
-        label.setColour (juce::Label::textColourId, textColour.withAlpha (0.65f));
+        label.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.65f));
         label.setFont (juce::Font { juce::FontOptions { 13.0f } });
         addAndMakeVisible (label);
     };
@@ -39,91 +154,80 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
     auto setupValue = [this] (juce::Label& label)
     {
         label.setJustificationType (juce::Justification::centred);
-        label.setColour (juce::Label::backgroundColourId, panelColour);
-        label.setColour (juce::Label::textColourId, accentColour);
+        label.setColour (juce::Label::backgroundColourId, UiColours::panel);
+        label.setColour (juce::Label::textColourId, UiColours::accent);
         label.setFont (juce::Font { juce::FontOptions { 18.0f, juce::Font::bold } });
         addAndMakeVisible (label);
     };
 
+    styleCombo (presetBox);
+    presetBox.onChange = [this]
+    {
+        const auto name = presetBox.getText();
+
+        if (name.isNotEmpty() && name != processorRef.getWorkingPreset().name)
+            processorRef.loadNamedPreset (name);
+    };
+
+    styleButton (saveButton);
+    saveButton.onClick = [this]
+    {
+        if (processorRef.getPresetBank().isFactoryName (processorRef.getWorkingPreset().name))
+            promptSaveAs();
+        else
+            processorRef.saveWorkingPreset();
+    };
+
+    styleButton (saveAsButton);
+    saveAsButton.onClick = [this] { promptSaveAs(); };
+
+    styleButton (deleteButton);
+    deleteButton.onClick = [this]
+    {
+        const auto name = processorRef.getWorkingPreset().name;
+
+        if (! processorRef.getPresetBank().isFactoryName (name))
+            processorRef.deleteNamedPreset (name);
+    };
+
+    setupCaption (quantizeLabel, "Quantize");
+    styleCombo (quantizeBox);
+
+    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (
+            processorRef.getAPVTS().getParameter (StutterCloneAudioProcessor::quantizeParamId)))
+        quantizeBox.addItemList (choice->choices, 1);
+
+    quantizeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processorRef.getAPVTS(), StutterCloneAudioProcessor::quantizeParamId, quantizeBox);
+
+    quantizeBox.onChange = [this]
+    {
+        processorRef.setWorkingQuantizeIndex (quantizeBox.getSelectedItemIndex());
+    };
+
+    addAndMakeVisible (waveformDisplay);
+
     setupCaption (bpmTitleLabel, "BPM");
     setupCaption (midiTitleLabel, "MIDI Trigger");
     setupCaption (gestureTitleLabel, "Gesture");
-    setupCaption (divisionLabel, "Loop Division (fallback)");
     setupValue (bpmValueLabel);
     setupValue (midiValueLabel);
     setupValue (gestureValueLabel);
 
-    auto& apvts = processorRef.getAPVTS();
+    keyboard.onNoteClicked = [this] (int index)
+    {
+        openActionEditor (index);
+    };
+    addAndMakeVisible (keyboard);
 
-    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (StutterCloneAudioProcessor::loopDivisionParamId)))
-        loopDivisionBox.addItemList (choice->choices, 1);
+    styleButton (editButton);
+    editButton.onClick = [this]
+    {
+        openActionEditor (keyboard.getSelectedIndex());
+    };
 
-    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (StutterCloneAudioProcessor::filterTypeParamId)))
-        filterTypeBox.addItemList (choice->choices, 1);
-
-    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (StutterCloneAudioProcessor::delayDivisionParamId)))
-        delayTimeBox.addItemList (choice->choices, 1);
-
-    styleCombo (loopDivisionBox);
-    styleCombo (filterTypeBox);
-    styleCombo (delayTimeBox);
-
-    styleToggle (sweepButton);
-    styleToggle (reverseButton);
-    styleToggle (panButton);
-    styleToggle (filterOnButton);
-    styleToggle (loFiOnButton);
-    styleToggle (delayOnButton);
-    styleToggle (reverbOnButton);
-    styleToggle (delayCutButton);
-    styleToggle (reverbCutButton);
-
-    setupSlider (filterStartSlider, filterStartLabel, "Start");
-    setupSlider (filterEndSlider, filterEndLabel, "End");
-    setupSlider (filterResSlider, filterResLabel, "Res");
-    filterStartSlider.setTextValueSuffix (" Hz");
-    filterEndSlider.setTextValueSuffix (" Hz");
-
-    setupSlider (loFiBitsSlider, loFiBitsLabel, "Bits");
-    setupSlider (loFiDownsampleSlider, loFiDownsampleLabel, "Downsample");
-    loFiBitsSlider.setNumDecimalPlacesToDisplay (0);
-    loFiDownsampleSlider.setNumDecimalPlacesToDisplay (0);
-
-    setupSlider (delayMixSlider, delayMixLabel, "Mix");
-    setupSlider (delayFeedbackSlider, delayFeedbackLabel, "Feedback");
-
-    setupSlider (reverbMixSlider, reverbMixLabel, "Mix");
-    setupSlider (reverbSizeSlider, reverbSizeLabel, "Size");
-    setupSlider (reverbDampSlider, reverbDampLabel, "Damp");
-
-    loopAttachment = std::make_unique<ComboAttachment> (apvts, StutterCloneAudioProcessor::loopDivisionParamId, loopDivisionBox);
-    sweepAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::sweepParamId, sweepButton);
-    reverseAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::reverseParamId, reverseButton);
-    panAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::alternatePanParamId, panButton);
-
-    filterOnAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::filterOnParamId, filterOnButton);
-    filterTypeAttachment = std::make_unique<ComboAttachment> (apvts, StutterCloneAudioProcessor::filterTypeParamId, filterTypeBox);
-    filterStartAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::filterCutoffStartParamId, filterStartSlider);
-    filterEndAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::filterCutoffEndParamId, filterEndSlider);
-    filterResAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::filterResonanceParamId, filterResSlider);
-
-    loFiOnAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::loFiOnParamId, loFiOnButton);
-    loFiBitsAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::loFiBitsParamId, loFiBitsSlider);
-    loFiDownsampleAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::loFiDownsampleParamId, loFiDownsampleSlider);
-
-    delayOnAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::delayOnParamId, delayOnButton);
-    delayTimeAttachment = std::make_unique<ComboAttachment> (apvts, StutterCloneAudioProcessor::delayDivisionParamId, delayTimeBox);
-    delayMixAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::delayMixParamId, delayMixSlider);
-    delayFeedbackAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::delayFeedbackParamId, delayFeedbackSlider);
-    delayCutAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::delayCutParamId, delayCutButton);
-
-    reverbOnAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::reverbOnParamId, reverbOnButton);
-    reverbMixAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::reverbMixParamId, reverbMixSlider);
-    reverbSizeAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::reverbSizeParamId, reverbSizeSlider);
-    reverbDampAttachment = std::make_unique<SliderAttachment> (apvts, StutterCloneAudioProcessor::reverbDampingParamId, reverbDampSlider);
-    reverbCutAttachment = std::make_unique<ButtonAttachment> (apvts, StutterCloneAudioProcessor::reverbCutParamId, reverbCutButton);
-
-    setSize (540, 760);
+    refreshPresetList();
+    setSize (540, 520);
     updateStatusDisplay();
     startTimerHz (30);
 }
@@ -131,56 +235,132 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
 StutterCloneAudioProcessorEditor::~StutterCloneAudioProcessorEditor()
 {
     stopTimer();
+    processorRef.removeChangeListener (this);
+    actionWindow.reset();
     processorRef.setEditorOpen (false);
-}
-
-void StutterCloneAudioProcessorEditor::styleToggle (juce::ToggleButton& button)
-{
-    button.setColour (juce::ToggleButton::textColourId, textColour);
-    button.setColour (juce::ToggleButton::tickColourId, accentColour);
-    addAndMakeVisible (button);
 }
 
 void StutterCloneAudioProcessorEditor::styleCombo (juce::ComboBox& box)
 {
-    box.setColour (juce::ComboBox::backgroundColourId, panelColour);
-    box.setColour (juce::ComboBox::textColourId, textColour);
-    box.setColour (juce::ComboBox::outlineColourId, accentColour.withAlpha (0.35f));
+    box.setColour (juce::ComboBox::backgroundColourId, UiColours::panel);
+    box.setColour (juce::ComboBox::textColourId, UiColours::text);
+    box.setColour (juce::ComboBox::outlineColourId, UiColours::accent.withAlpha (0.35f));
     addAndMakeVisible (box);
 }
 
-void StutterCloneAudioProcessorEditor::setupSlider (juce::Slider& slider, juce::Label& label, const juce::String& text)
+void StutterCloneAudioProcessorEditor::styleButton (juce::TextButton& button)
 {
-    slider.setSliderStyle (juce::Slider::LinearHorizontal);
-    slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 18);
-    slider.setColour (juce::Slider::thumbColourId, accentColour);
-    slider.setColour (juce::Slider::trackColourId, accentColour.withAlpha (0.35f));
-    slider.setColour (juce::Slider::backgroundColourId, panelColour);
-    slider.setColour (juce::Slider::textBoxTextColourId, textColour);
-    slider.setColour (juce::Slider::textBoxBackgroundColourId, panelColour);
-    slider.setColour (juce::Slider::textBoxOutlineColourId, accentColour.withAlpha (0.25f));
-    addAndMakeVisible (slider);
+    button.setColour (juce::TextButton::buttonColourId, UiColours::panel);
+    button.setColour (juce::TextButton::textColourOffId, UiColours::text);
+    button.setColour (juce::TextButton::textColourOnId, UiColours::accent);
+    addAndMakeVisible (button);
+}
 
-    label.setText (text, juce::dontSendNotification);
-    label.setColour (juce::Label::textColourId, textColour.withAlpha (0.7f));
-    label.setFont (juce::Font { juce::FontOptions { 12.0f } });
-    addAndMakeVisible (label);
+void StutterCloneAudioProcessorEditor::refreshPresetList()
+{
+    const auto current = processorRef.getWorkingPreset().name;
+    presetBox.clear (juce::dontSendNotification);
+
+    const auto names = processorRef.getPresetBank().getPresetNames();
+    int selected = 1;
+
+    for (int i = 0; i < names.size(); ++i)
+    {
+        presetBox.addItem (names[i], i + 1);
+
+        if (names[i] == current)
+            selected = i + 1;
+    }
+
+    presetBox.setSelectedId (selected, juce::dontSendNotification);
+    deleteButton.setEnabled (! processorRef.getPresetBank().isFactoryName (current));
+}
+
+void StutterCloneAudioProcessorEditor::openActionEditor (int gestureIndex)
+{
+    keyboard.setSelectedIndex (gestureIndex);
+
+    if (actionWindow == nullptr)
+        actionWindow = std::make_unique<ActionEditorWindow> (processorRef, gestureIndex);
+    else
+        actionWindow->setGestureIndex (gestureIndex);
+
+    actionWindow->setVisible (true);
+    actionWindow->toFront (true);
+}
+
+void StutterCloneAudioProcessorEditor::dismissSaveAsOverlay()
+{
+    saveAsOverlay.reset();
+}
+
+void StutterCloneAudioProcessorEditor::layoutSaveAsOverlay()
+{
+    if (saveAsOverlay != nullptr)
+        saveAsOverlay->setBounds (getLocalBounds());
+}
+
+void StutterCloneAudioProcessorEditor::promptSaveAs()
+{
+    auto overlay = std::make_unique<SavePresetOverlay>();
+    overlay->setNameText (processorRef.getWorkingPreset().isFactory
+                              ? "My Preset"
+                              : processorRef.getWorkingPreset().name);
+    overlay->onSave = [this] (juce::String name)
+    {
+        processorRef.saveWorkingPresetAs (name);
+        dismissSaveAsOverlay();
+    };
+    overlay->onCancel = [this] { dismissSaveAsOverlay(); };
+
+    addAndMakeVisible (*overlay);
+    overlay->toFront (true);
+    saveAsOverlay = std::move (overlay);
+    layoutSaveAsOverlay();
+
+    if (auto* overlayComponent = dynamic_cast<SavePresetOverlay*> (saveAsOverlay.get()))
+        overlayComponent->focusNameEditor();
+}
+
+void StutterCloneAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    refreshPresetList();
+
+    if (actionWindow != nullptr)
+        actionWindow->getEditor().setGestureIndex (actionWindow->getEditor().getGestureIndex());
 }
 
 void StutterCloneAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (backgroundColour);
-
-    g.setColour (panelColour);
+    g.fillAll (UiColours::background);
+    g.setColour (UiColours::panel);
     g.fillRect (0, 0, getWidth(), 56);
-    g.setColour (accentColour);
+    g.setColour (UiColours::accent);
     g.fillRect (0, 56, getWidth(), 2);
 }
 
 void StutterCloneAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds().reduced (16);
-    titleLabel.setBounds (bounds.removeFromTop (24));
+    auto titleRow = bounds.removeFromTop (24);
+    versionLabel.setBounds (titleRow.removeFromRight (48));
+    titleLabel.setBounds (titleRow);
+    bounds.removeFromTop (10);
+
+    auto presetRow = bounds.removeFromTop (26);
+    presetBox.setBounds (presetRow.removeFromLeft (180));
+    presetRow.removeFromLeft (6);
+    saveButton.setBounds (presetRow.removeFromLeft (64));
+    presetRow.removeFromLeft (4);
+    saveAsButton.setBounds (presetRow.removeFromLeft (72));
+    presetRow.removeFromLeft (4);
+    deleteButton.setBounds (presetRow.removeFromLeft (64));
+
+    bounds.removeFromTop (8);
+    auto quantRow = bounds.removeFromTop (26);
+    quantizeLabel.setBounds (quantRow.removeFromLeft (72));
+    quantizeBox.setBounds (quantRow.removeFromLeft (110));
+
     bounds.removeFromTop (10);
     waveformDisplay.setBounds (bounds.removeFromTop (96));
     bounds.removeFromTop (12);
@@ -197,61 +377,19 @@ void StutterCloneAudioProcessorEditor::resized()
     gestureTitleLabel.setBounds (bounds.removeFromTop (16));
     gestureValueLabel.setBounds (bounds.removeFromTop (26));
 
-    bounds.removeFromTop (8);
-    divisionLabel.setBounds (bounds.removeFromTop (16));
-    loopDivisionBox.setBounds (bounds.removeFromTop (24));
-
-    bounds.removeFromTop (8);
-    auto toggles = bounds.removeFromTop (22);
-    const int toggleW = toggles.getWidth() / 3;
-    sweepButton.setBounds (toggles.removeFromLeft (toggleW));
-    reverseButton.setBounds (toggles.removeFromLeft (toggleW));
-    panButton.setBounds (toggles);
-
     bounds.removeFromTop (10);
-    auto fx = bounds;
-    auto left = fx.removeFromLeft ((fx.getWidth() - 12) / 2);
-    fx.removeFromLeft (12);
-    auto right = fx;
+    keyboard.setBounds (bounds.removeFromTop (78));
+    bounds.removeFromTop (8);
+    editButton.setBounds (bounds.removeFromTop (28).removeFromLeft (140));
 
-    auto layoutSlider = [] (juce::Rectangle<int>& area, juce::Label& label, juce::Slider& slider)
-    {
-        auto row = area.removeFromTop (32);
-        label.setBounds (row.removeFromLeft (72));
-        slider.setBounds (row);
-    };
-
-    filterOnButton.setBounds (left.removeFromTop (22));
-    filterTypeBox.setBounds (left.removeFromTop (24));
-    left.removeFromTop (4);
-    layoutSlider (left, filterStartLabel, filterStartSlider);
-    layoutSlider (left, filterEndLabel, filterEndSlider);
-    layoutSlider (left, filterResLabel, filterResSlider);
-
-    left.removeFromTop (10);
-    loFiOnButton.setBounds (left.removeFromTop (22));
-    layoutSlider (left, loFiBitsLabel, loFiBitsSlider);
-    layoutSlider (left, loFiDownsampleLabel, loFiDownsampleSlider);
-
-    delayOnButton.setBounds (right.removeFromTop (22));
-    delayTimeBox.setBounds (right.removeFromTop (24));
-    right.removeFromTop (4);
-    layoutSlider (right, delayMixLabel, delayMixSlider);
-    layoutSlider (right, delayFeedbackLabel, delayFeedbackSlider);
-    delayCutButton.setBounds (right.removeFromTop (22));
-
-    right.removeFromTop (10);
-    reverbOnButton.setBounds (right.removeFromTop (22));
-    layoutSlider (right, reverbMixLabel, reverbMixSlider);
-    layoutSlider (right, reverbSizeLabel, reverbSizeSlider);
-    layoutSlider (right, reverbDampLabel, reverbDampSlider);
-    reverbCutButton.setBounds (right.removeFromTop (22));
+    layoutSaveAsOverlay();
 }
 
 void StutterCloneAudioProcessorEditor::timerCallback()
 {
     waveformDisplay.pullSnapshot();
     waveformDisplay.repaint();
+    keyboard.setHeldMask (processorRef.getHeldGestureMask());
     updateStatusDisplay();
 }
 
@@ -260,21 +398,34 @@ void StutterCloneAudioProcessorEditor::updateStatusDisplay()
     bpmValueLabel.setText (juce::String (processorRef.getCurrentBpm(), 1), juce::dontSendNotification);
 
     const bool active = processorRef.isStutterActive();
-    midiValueLabel.setText (active ? "Active" : "Inactive", juce::dontSendNotification);
-    midiValueLabel.setColour (juce::Label::textColourId, active ? accentColour : inactiveColour);
+    const bool pending = processorRef.isGesturePending();
+    midiValueLabel.setText (active ? "Active" : (pending ? "Pending" : "Inactive"),
+                            juce::dontSendNotification);
+    midiValueLabel.setColour (juce::Label::textColourId,
+                              active ? UiColours::accent
+                                     : (pending ? juce::Colour (0xffffc857) : UiColours::inactive));
 
-    const int note = processorRef.getGestureNote();
+    const int note = active ? processorRef.getGestureNote() : processorRef.getPendingNote();
     const int division = processorRef.getActiveDivisionIndex();
+    const int step = processorRef.getActiveStep();
 
-    if (active && note >= 0)
+    if (note >= 0)
     {
         const auto noteName = juce::MidiMessage::getMidiNoteName (note, true, true, 3);
-        gestureValueLabel.setText (noteName + "  ·  " + divisionName (division), juce::dontSendNotification);
-        gestureValueLabel.setColour (juce::Label::textColourId, accentColour);
+        auto text = noteName + "  |  " + stutter::divisionNames[juce::jlimit (0, stutter::numDivisions - 1, division)];
+
+        if (active)
+            text += "  |  step " + juce::String (step + 1);
+
+        if (pending && ! active)
+            text += "  |  waiting";
+
+        gestureValueLabel.setText (text, juce::dontSendNotification);
+        gestureValueLabel.setColour (juce::Label::textColourId, UiColours::accent);
     }
     else
     {
-        gestureValueLabel.setText ("GUI  ·  " + juce::String (divisionName (division)), juce::dontSendNotification);
-        gestureValueLabel.setColour (juce::Label::textColourId, textColour.withAlpha (0.7f));
+        gestureValueLabel.setText ("C3-B3  |  hold a note", juce::dontSendNotification);
+        gestureValueLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.7f));
     }
 }

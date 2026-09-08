@@ -1,37 +1,26 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-#include <array>
 #include <cmath>
 #include <vector>
 
 namespace
 {
-    constexpr std::array<double, StutterCloneAudioProcessor::numDivisions> beatsPerDivision
+    void copyActions (std::array<stutter::Action, stutter::numGestureNotes>& dest,
+                      const std::array<stutter::Action, stutter::numGestureNotes>& src) noexcept
     {
-        1.0,    // 1/4
-        0.5,    // 1/8
-        0.25,   // 1/16
-        0.125,  // 1/32
-        0.0625  // 1/64
-    };
-
-    int divisionIndexForNote (int note) noexcept
-    {
-        switch (note)
-        {
-            case 60: case 61: return 1; // C3 / C#3 → 1/8
-            case 62: case 63: return 2; // D3 / D#3 → 1/16
-            case 64:          return 3; // E3       → 1/32
-            case 65: case 66: return 4; // F3 / F#3 → 1/64
-            case 67:          return 0; // G3       → 1/4
-            default:          return -1;
-        }
+        dest = src;
     }
 
-    bool paramOn (const std::atomic<float>* param) noexcept
+    uint16_t maskFromNotes (const std::array<uint8_t, 128>& notesHeld) noexcept
     {
-        return param != nullptr && param->load (std::memory_order_relaxed) >= 0.5f;
+        uint16_t mask = 0;
+
+        for (int i = 0; i < stutter::numGestureNotes; ++i)
+            if (notesHeld[static_cast<size_t> (stutter::noteForGestureIndex (i))] != 0)
+                mask = static_cast<uint16_t> (mask | (1u << i));
+
+        return mask;
     }
 }
 
@@ -39,30 +28,13 @@ StutterCloneAudioProcessor::StutterCloneAudioProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "PARAMS", createParameterLayout())
+      apvts (*this, nullptr, "PARAMS", createParameterLayout()),
+      workingPreset (makeClassicPreset())
 {
-    loopDivisionParam = apvts.getRawParameterValue (loopDivisionParamId);
-    sweepParam = apvts.getRawParameterValue (sweepParamId);
-    reverseParam = apvts.getRawParameterValue (reverseParamId);
-    alternatePanParam = apvts.getRawParameterValue (alternatePanParamId);
-    filterOnParam = apvts.getRawParameterValue (filterOnParamId);
-    filterTypeParam = apvts.getRawParameterValue (filterTypeParamId);
-    filterCutoffStartParam = apvts.getRawParameterValue (filterCutoffStartParamId);
-    filterCutoffEndParam = apvts.getRawParameterValue (filterCutoffEndParamId);
-    filterResonanceParam = apvts.getRawParameterValue (filterResonanceParamId);
-    loFiOnParam = apvts.getRawParameterValue (loFiOnParamId);
-    loFiBitsParam = apvts.getRawParameterValue (loFiBitsParamId);
-    loFiDownsampleParam = apvts.getRawParameterValue (loFiDownsampleParamId);
-    delayOnParam = apvts.getRawParameterValue (delayOnParamId);
-    delayMixParam = apvts.getRawParameterValue (delayMixParamId);
-    delayDivisionParam = apvts.getRawParameterValue (delayDivisionParamId);
-    delayFeedbackParam = apvts.getRawParameterValue (delayFeedbackParamId);
-    delayCutParam = apvts.getRawParameterValue (delayCutParamId);
-    reverbOnParam = apvts.getRawParameterValue (reverbOnParamId);
-    reverbMixParam = apvts.getRawParameterValue (reverbMixParamId);
-    reverbSizeParam = apvts.getRawParameterValue (reverbSizeParamId);
-    reverbDampingParam = apvts.getRawParameterValue (reverbDampingParamId);
-    reverbCutParam = apvts.getRawParameterValue (reverbCutParamId);
+    quantizeParam = apvts.getRawParameterValue (quantizeParamId);
+    copyActions (rtActions[0], workingPreset.actions);
+    copyActions (rtActions[1], workingPreset.actions);
+    stutter::initActionDefaults (playingAction);
 }
 
 StutterCloneAudioProcessor::~StutterCloneAudioProcessor() = default;
@@ -71,78 +43,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout StutterCloneAudioProcessor::
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
+    juce::StringArray quantizeChoices;
+    for (int i = 0; i < stutter::numQuantizeChoices; ++i)
+        quantizeChoices.add (stutter::quantizeNames[i]);
+
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { loopDivisionParamId, 1 },
-        "Loop Division",
-        juce::StringArray { "1/4", "1/8", "1/16", "1/32", "1/64" },
-        2));
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { sweepParamId, 1 },
-        "Sweep",
-        false));
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { reverseParamId, 1 },
-        "Reverse",
-        false));
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { alternatePanParamId, 1 },
-        "Alt Pan",
-        false));
-
-    const juce::NormalisableRange<float> hzRange { 20.0f, 20000.0f, 0.01f, 0.25f };
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { filterOnParamId, 1 }, "Filter", false));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { filterTypeParamId, 1 }, "Filter Type",
-        juce::StringArray { "Lowpass", "Highpass", "Bandpass" }, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { filterCutoffStartParamId, 1 }, "Filter Start",
-        hzRange, 12000.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { filterCutoffEndParamId, 1 }, "Filter End",
-        hzRange, 250.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { filterResonanceParamId, 1 }, "Resonance",
-        juce::NormalisableRange<float> { 0.1f, 4.0f, 0.001f, 0.4f }, 0.707f));
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { loFiOnParamId, 1 }, "Lo-Fi", false));
-    params.push_back (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { loFiBitsParamId, 1 }, "Bit Depth", 1, 16, 8));
-    params.push_back (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { loFiDownsampleParamId, 1 }, "Downsample", 1, 16, 1));
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { delayOnParamId, 1 }, "Delay", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { delayMixParamId, 1 }, "Delay Mix",
-        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.35f));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { delayDivisionParamId, 1 }, "Delay Time",
-        juce::StringArray { "1/4", "1/8", "1/16", "1/32" }, 1));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { delayFeedbackParamId, 1 }, "Delay Feedback",
-        juce::NormalisableRange<float> { 0.0f, 0.95f, 0.01f }, 0.35f));
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { delayCutParamId, 1 }, "Delay Cut on Release", false));
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { reverbOnParamId, 1 }, "Reverb", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { reverbMixParamId, 1 }, "Reverb Mix",
-        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.25f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { reverbSizeParamId, 1 }, "Reverb Size",
-        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.55f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { reverbDampingParamId, 1 }, "Reverb Damping",
-        juce::NormalisableRange<float> { 0.0f, 1.0f, 0.01f }, 0.45f));
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { reverbCutParamId, 1 }, "Reverb Cut on Release", false));
+        juce::ParameterID { quantizeParamId, 2 },
+        "Quantize",
+        quantizeChoices,
+        0));
 
     return { params.begin(), params.end() };
 }
@@ -166,24 +75,29 @@ void StutterCloneAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     stutterIsOn = false;
     hasWrapped = false;
     reversePlayback = false;
+    pendingArmed = false;
     heldNoteCount = 0;
     stutterReadOffset = 0;
     loopLengthSamples = 0;
     loopStartInRing = 0;
     fadeInRemaining = 0;
     fadeOutRemaining = 0;
-    midiDivisionOverride = -1;
-    sweepSamplesElapsed = 0;
-    sweepLengthSamples = 1;
     loopCycleCount = 0;
+    pendingNote = -1;
+    playingNote = -1;
+    lastStepIndex = -1;
+    gestureBeat = 0.0;
     samplesUntilWaveformUpdate = 0;
     waveformUpdateInterval = juce::jmax (256, juce::roundToInt (sampleRate * 0.025));
     waveformSnapshots[0] = {};
     waveformSnapshots[1] = {};
     waveformPublished.store (0, std::memory_order_relaxed);
     resetHeldNotes();
+    cancelPending();
     stutterActive.store (false, std::memory_order_relaxed);
     gestureNote.store (-1, std::memory_order_relaxed);
+    activeStep.store (0, std::memory_order_relaxed);
+    gestureBeatAtomic.store (0.0f, std::memory_order_relaxed);
 }
 
 void StutterCloneAudioProcessor::releaseResources()
@@ -192,8 +106,8 @@ void StutterCloneAudioProcessor::releaseResources()
     heldNoteCount = 0;
     fadeInRemaining = 0;
     fadeOutRemaining = 0;
-    midiDivisionOverride = -1;
     resetHeldNotes();
+    cancelPending();
     dspChain.reset();
     stutterActive.store (false, std::memory_order_relaxed);
     gestureNote.store (-1, std::memory_order_relaxed);
@@ -242,6 +156,7 @@ void StutterCloneAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         processAudioSlice (buffer, samplePos, numSamples - samplePos);
 
     midiMessages.clear();
+    ppqPosition.store (ppqCursor, std::memory_order_relaxed);
 
     samplesUntilWaveformUpdate += numSamples;
 
@@ -254,6 +169,8 @@ void StutterCloneAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
 void StutterCloneAudioProcessor::capturePlayHead() noexcept
 {
+    bool usedHostPpq = false;
+
     if (auto* playHead = getPlayHead())
     {
         if (const auto position = playHead->getPosition())
@@ -262,9 +179,61 @@ void StutterCloneAudioProcessor::capturePlayHead() noexcept
                 currentBpm.store (static_cast<float> (*bpm), std::memory_order_relaxed);
 
             if (const auto ppq = position->getPpqPosition())
-                ppqPosition.store (*ppq, std::memory_order_relaxed);
+            {
+                ppqCursor = *ppq;
+                usedHostPpq = true;
+            }
         }
     }
+
+    const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
+    ppqPerSample = (bpm / 60.0) / juce::jmax (1.0, currentSampleRate);
+
+    if (! usedHostPpq)
+        ppqCursor = ppqPosition.load (std::memory_order_relaxed);
+}
+
+int StutterCloneAudioProcessor::currentQuantizeIndex() const noexcept
+{
+    if (quantizeParam == nullptr)
+        return 0;
+
+    return juce::jlimit (0, stutter::numQuantizeChoices - 1,
+                         juce::roundToInt (quantizeParam->load (std::memory_order_relaxed)));
+}
+
+const stutter::Action& StutterCloneAudioProcessor::rtActionForNote (int midiNote) const noexcept
+{
+    const int dest = juce::jlimit (0, 1, rtActionIndex.load (std::memory_order_acquire));
+    const int index = juce::jlimit (0, stutter::numGestureNotes - 1,
+                                    stutter::gestureIndexForNote (midiNote));
+    return rtActions[static_cast<size_t> (dest)][static_cast<size_t> (index)];
+}
+
+void StutterCloneAudioProcessor::armPending (int midiNote) noexcept
+{
+    if (stutter::isQuantizeOff (currentQuantizeIndex()))
+    {
+        cancelPending();
+        startStutter (midiNote);
+        stutterActive.store (stutterIsOn, std::memory_order_relaxed);
+        return;
+    }
+
+    pendingNote = midiNote;
+    pendingArmed = true;
+    pendingGridPpq = stutter::nextGridPpq (ppqCursor,
+                                           stutter::quantizeGridBeats[static_cast<size_t> (currentQuantizeIndex())]);
+    pendingNoteAtomic.store (midiNote, std::memory_order_relaxed);
+    gesturePending.store (true, std::memory_order_relaxed);
+}
+
+void StutterCloneAudioProcessor::cancelPending() noexcept
+{
+    pendingArmed = false;
+    pendingNote = -1;
+    pendingNoteAtomic.store (-1, std::memory_order_relaxed);
+    gesturePending.store (false, std::memory_order_relaxed);
 }
 
 void StutterCloneAudioProcessor::handleMidiEvent (const juce::uint8* data, int numBytes) noexcept
@@ -278,6 +247,9 @@ void StutterCloneAudioProcessor::handleMidiEvent (const juce::uint8* data, int n
     const bool isNoteOn = status == 0x90;
     const bool isNoteOff = status == 0x80 || (isNoteOn && velocity == 0);
 
+    if (! stutter::isGestureNote (note))
+        return;
+
     if (isNoteOn && velocity > 0)
     {
         if (notesHeld[static_cast<size_t> (note)] == 0)
@@ -286,8 +258,20 @@ void StutterCloneAudioProcessor::handleMidiEvent (const juce::uint8* data, int n
             ++heldNoteCount;
         }
 
-        startStutter (note);
-        stutterActive.store (stutterIsOn, std::memory_order_relaxed);
+        heldGestureMask.store (maskFromNotes (notesHeld), std::memory_order_relaxed);
+
+        const int highest = findHighestHeldGestureNote();
+
+        if (stutterIsOn)
+        {
+            if (highest >= 0)
+                startStutter (highest);
+        }
+        else
+        {
+            armPending (highest >= 0 ? highest : note);
+        }
+
         return;
     }
 
@@ -299,17 +283,22 @@ void StutterCloneAudioProcessor::handleMidiEvent (const juce::uint8* data, int n
             heldNoteCount = juce::jmax (0, heldNoteCount - 1);
         }
 
+        heldGestureMask.store (maskFromNotes (notesHeld), std::memory_order_relaxed);
+
         if (heldNoteCount == 0)
         {
+            cancelPending();
             stopStutter();
             stutterActive.store (false, std::memory_order_relaxed);
             gestureNote.store (-1, std::memory_order_relaxed);
-            midiDivisionOverride = -1;
+            playingNote = -1;
         }
-        else if (const int remaining = findHighestHeldNote(); remaining >= 0)
+        else if (const int remaining = findHighestHeldGestureNote(); remaining >= 0)
         {
-            startStutter (remaining);
-            stutterActive.store (stutterIsOn, std::memory_order_relaxed);
+            if (stutterIsOn)
+                startStutter (remaining);
+            else
+                armPending (remaining);
         }
     }
 }
@@ -321,107 +310,180 @@ void StutterCloneAudioProcessor::processAudioSlice (juce::AudioBuffer<float>& bu
     if (numSamples <= 0)
         return;
 
-    writeToRingBuffer (buffer, startSample, numSamples);
+    int triggerOffset = numSamples;
 
-    if (stutterIsOn || fadeOutRemaining > 0)
+    if (pendingArmed && pendingNote >= 0 && ppqPerSample > 0.0)
     {
-    reversePlayback = paramOn (reverseParam);
-    const bool altPan = paramOn (alternatePanParam);
-    const int numChannels = juce::jmin (buffer.getNumChannels(), ringBuffer.getNumChannels());
-    const int fadeNorm = juce::jmax (1, crossfadeSamples);
-
-    for (int i = 0; i < numSamples; ++i)
-    {
-        float gainStutter = 1.0f;
-        float gainLive = 0.0f;
-
-        if (stutterIsOn)
+        if (ppqCursor >= pendingGridPpq)
         {
-            if (fadeInRemaining > 0)
-            {
-                gainStutter = 1.0f - (static_cast<float> (fadeInRemaining) / static_cast<float> (fadeNorm));
-                gainLive = 1.0f - gainStutter;
-                --fadeInRemaining;
-            }
-
-            ++sweepSamplesElapsed;
-        }
-        else if (fadeOutRemaining > 0)
-        {
-            gainStutter = static_cast<float> (fadeOutRemaining) / static_cast<float> (fadeNorm);
-            gainLive = 1.0f - gainStutter;
-            --fadeOutRemaining;
+            triggerOffset = 0;
         }
         else
         {
-            break;
+            const double samplesAway = (pendingGridPpq - ppqCursor) / ppqPerSample;
+            triggerOffset = juce::roundToInt (samplesAway);
         }
-
-        if (loopLengthSamples < 2)
-        {
-            advanceLoopReadHead();
-            continue;
-        }
-
-        float panL = 1.0f;
-        float panR = 1.0f;
-
-        if (altPan && numChannels > 1)
-        {
-            const bool leftCycle = (loopCycleCount & 1) == 0;
-            panL = leftCycle ? 1.0f : 0.0f;
-            panR = leftCycle ? 0.0f : 1.0f;
-        }
-
-        const int sampleIndex = startSample + i;
-
-        for (int channel = 0; channel < numChannels; ++channel)
-        {
-            const float live = buffer.getSample (channel, sampleIndex);
-            const float stutter = readLoopedSample (channel);
-            const float pan = channel == 0 ? panL : (channel == 1 ? panR : 1.0f);
-            buffer.setSample (channel, sampleIndex, live * gainLive + stutter * gainStutter * pan);
-        }
-
-        advanceLoopReadHead();
     }
+
+    if (pendingArmed && triggerOffset < numSamples)
+    {
+        triggerOffset = juce::jlimit (0, numSamples, triggerOffset);
+
+        if (triggerOffset > 0)
+        {
+            writeToRingBuffer (buffer, startSample, triggerOffset);
+
+            if (stutterIsOn || fadeOutRemaining > 0)
+            {
+                // Should not happen while pending, but keep FX tails if any.
+                processFxSlice (buffer, startSample, triggerOffset);
+            }
+
+            ppqCursor += triggerOffset * ppqPerSample;
+        }
+
+        const int noteToStart = pendingNote;
+        cancelPending();
+        startStutter (noteToStart);
+        stutterActive.store (stutterIsOn, std::memory_order_relaxed);
+
+        const int remainStart = startSample + triggerOffset;
+        const int remainCount = numSamples - triggerOffset;
+
+        if (remainCount > 0)
+            processAudioSlice (buffer, remainStart, remainCount);
+        else
+            return;
+
+        return;
+    }
+
+    writeToRingBuffer (buffer, startSample, numSamples);
+
+    if (stutterIsOn && playingNote >= 0)
+        playingAction = rtActionForNote (playingNote);
+
+    if (stutterIsOn || fadeOutRemaining > 0)
+    {
+        const int numChannels = juce::jmin (buffer.getNumChannels(), ringBuffer.getNumChannels());
+        const int fadeNorm = juce::jmax (1, crossfadeSamples);
+        const double beatsPerSample = ppqPerSample;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float gainStutter = 1.0f;
+            float gainLive = 0.0f;
+
+            if (stutterIsOn)
+            {
+                if (fadeInRemaining > 0)
+                {
+                    gainStutter = 1.0f - (static_cast<float> (fadeInRemaining) / static_cast<float> (fadeNorm));
+                    gainLive = 1.0f - gainStutter;
+                    --fadeInRemaining;
+                }
+
+                gestureBeat += beatsPerSample;
+
+                while (gestureBeat >= stutter::measureBeats)
+                    gestureBeat -= stutter::measureBeats;
+
+                const auto step = stutter::evaluateAction (playingAction, gestureBeat);
+                const int stepIndex = stutter::stepIndexForBeat (gestureBeat, playingAction.gridResolution);
+
+                if (stepIndex != lastStepIndex)
+                {
+                    applyEvaluatedStep (step);
+                    lastStepIndex = stepIndex;
+                }
+
+                reversePlayback = step.reverse;
+                activeStep.store (stepIndex, std::memory_order_relaxed);
+                gestureBeatAtomic.store (static_cast<float> (gestureBeat), std::memory_order_relaxed);
+                activeDivisionIndex.store (step.divisionIndex, std::memory_order_relaxed);
+            }
+            else if (fadeOutRemaining > 0)
+            {
+                gainStutter = static_cast<float> (fadeOutRemaining) / static_cast<float> (fadeNorm);
+                gainLive = 1.0f - gainStutter;
+                --fadeOutRemaining;
+            }
+            else
+            {
+                break;
+            }
+
+            if (loopLengthSamples < 2)
+            {
+                advanceLoopReadHead();
+                continue;
+            }
+
+            const auto step = stutter::evaluateAction (playingAction, gestureBeat);
+            float panL = 1.0f;
+            float panR = 1.0f;
+
+            if (step.altPan && numChannels > 1)
+            {
+                const bool leftCycle = (loopCycleCount & 1) == 0;
+                panL = leftCycle ? 1.0f : 0.0f;
+                panR = leftCycle ? 0.0f : 1.0f;
+            }
+
+            const int sampleIndex = startSample + i;
+
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                const float live = buffer.getSample (channel, sampleIndex);
+                const float stutterSample = readLoopedSample (channel);
+                const float pan = channel == 0 ? panL : (channel == 1 ? panR : 1.0f);
+                buffer.setSample (channel, sampleIndex, live * gainLive + stutterSample * gainStutter * pan);
+            }
+
+            advanceLoopReadHead();
+        }
     }
 
     processFxSlice (buffer, startSample, numSamples);
+    ppqCursor += numSamples * ppqPerSample;
+}
+
+void StutterCloneAudioProcessor::applyEvaluatedStep (const stutter::EvaluatedStep& step) noexcept
+{
+    const int previousLength = loopLengthSamples;
+    activeDivisionIndex.store (step.divisionIndex, std::memory_order_relaxed);
+    loopLengthSamples = juce::jmin (computeLoopLengthSamples(), validSamplesInRing);
+    loopLengthSamples = juce::jmax (2, loopLengthSamples);
+
+    if (previousLength > 0 && stutterReadOffset >= loopLengthSamples)
+        stutterReadOffset %= loopLengthSamples;
 }
 
 void StutterCloneAudioProcessor::processFxSlice (juce::AudioBuffer<float>& buffer,
                                                  int startSample,
                                                  int numSamples) noexcept
 {
+    const auto step = stutter::evaluateAction (playingAction, gestureBeat);
+    const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
+    const int delayDiv = juce::jlimit (0, 3, playingAction.delayDivision);
+
     GestureDspChain::Settings settings;
     settings.feedEffects = stutterIsOn || fadeOutRemaining > 0;
-    settings.filterOn = paramOn (filterOnParam);
-    settings.filterType = juce::roundToInt (filterTypeParam->load (std::memory_order_relaxed));
-    settings.resonance = filterResonanceParam->load (std::memory_order_relaxed);
-
-    const float startHz = juce::jmax (20.0f, filterCutoffStartParam->load (std::memory_order_relaxed));
-    const float endHz = juce::jmax (20.0f, filterCutoffEndParam->load (std::memory_order_relaxed));
-    const float t = juce::jlimit (0.0f, 1.0f,
-        static_cast<float> (sweepSamplesElapsed) / static_cast<float> (juce::jmax (1, sweepLengthSamples)));
-    settings.cutoffHz = startHz * std::pow (endHz / startHz, t);
-
-    settings.loFiOn = paramOn (loFiOnParam);
-    settings.bitDepth = loFiBitsParam->load (std::memory_order_relaxed);
-    settings.downsample = juce::jmax (1, juce::roundToInt (loFiDownsampleParam->load (std::memory_order_relaxed)));
-
-    settings.delayOn = paramOn (delayOnParam);
-    settings.delayMix = delayMixParam->load (std::memory_order_relaxed);
-    settings.delayFeedback = delayFeedbackParam->load (std::memory_order_relaxed);
-
-    const int delayDivision = juce::jlimit (0, 3, juce::roundToInt (delayDivisionParam->load (std::memory_order_relaxed)));
-    const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
-    settings.delaySamples = static_cast<float> ((beatsPerDivision[static_cast<size_t> (delayDivision)] * 60.0 / bpm) * currentSampleRate);
-
-    settings.reverbOn = paramOn (reverbOnParam);
-    settings.reverbMix = reverbMixParam->load (std::memory_order_relaxed);
-    settings.reverbSize = reverbSizeParam->load (std::memory_order_relaxed);
-    settings.reverbDamping = reverbDampingParam->load (std::memory_order_relaxed);
+    settings.filterOn = step.filterOn;
+    settings.filterType = juce::jlimit (0, 2, playingAction.filterType);
+    settings.cutoffHz = step.cutoffHz;
+    settings.resonance = step.resonance;
+    settings.loFiOn = step.loFiOn;
+    settings.bitDepth = step.bitDepth;
+    settings.downsample = step.downsample;
+    settings.delayOn = step.delayOn;
+    settings.delayMix = step.delayMix;
+    settings.delayFeedback = step.delayFeedback;
+    settings.delaySamples = static_cast<float> ((stutter::beatsPerDivision[static_cast<size_t> (delayDiv)] * 60.0 / bpm) * currentSampleRate);
+    settings.reverbOn = step.reverbOn;
+    settings.reverbMix = step.reverbMix;
+    settings.reverbSize = step.reverbSize;
+    settings.reverbDamping = step.reverbDamping;
 
     dspChain.process (buffer, startSample, numSamples, settings);
 }
@@ -458,13 +520,17 @@ void StutterCloneAudioProcessor::writeToRingBuffer (const juce::AudioBuffer<floa
 
 void StutterCloneAudioProcessor::startStutter (int midiNote) noexcept
 {
-    midiDivisionOverride = divisionIndexForNote (midiNote);
-    const int division = currentDivisionIndex();
-    sweepStartBeats = beatsPerDivision[static_cast<size_t> (division)];
-    sweepSamplesElapsed = 0;
+    if (! stutter::isGestureNote (midiNote))
+        return;
 
-    const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
-    sweepLengthSamples = juce::jmax (1, juce::roundToInt ((sweepDurationBeats * 60.0 / bpm) * currentSampleRate));
+    playingAction = rtActionForNote (midiNote);
+    playingNote = midiNote;
+    gestureBeat = 0.0;
+    lastStepIndex = -1;
+
+    const auto step = stutter::evaluateAction (playingAction, 0.0);
+    applyEvaluatedStep (step);
+    reversePlayback = step.reverse;
 
     loopLengthSamples = juce::jmin (computeLoopLengthSamples(), validSamplesInRing);
 
@@ -484,7 +550,9 @@ void StutterCloneAudioProcessor::startStutter (int midiNote) noexcept
     stutterIsOn = true;
     dspChain.beginGesture();
     gestureNote.store (midiNote, std::memory_order_relaxed);
-    activeDivisionIndex.store (division, std::memory_order_relaxed);
+    activeDivisionIndex.store (step.divisionIndex, std::memory_order_relaxed);
+    activeStep.store (0, std::memory_order_relaxed);
+    gestureBeatAtomic.store (0.0f, std::memory_order_relaxed);
 }
 
 void StutterCloneAudioProcessor::stopStutter() noexcept
@@ -496,10 +564,10 @@ void StutterCloneAudioProcessor::stopStutter() noexcept
     fadeInRemaining = 0;
     fadeOutRemaining = juce::jmin (crossfadeSamples, juce::jmax (1, loopLengthSamples));
 
-    if (paramOn (delayCutParam))
+    if (playingAction.delayCut != 0)
         dspChain.resetDelay();
 
-    if (paramOn (reverbCutParam))
+    if (playingAction.reverbCut != 0)
         dspChain.resetReverb();
 }
 
@@ -507,39 +575,22 @@ void StutterCloneAudioProcessor::resetHeldNotes() noexcept
 {
     notesHeld.fill (0);
     heldNoteCount = 0;
+    heldGestureMask.store (0, std::memory_order_relaxed);
 }
 
-int StutterCloneAudioProcessor::findHighestHeldNote() const noexcept
+int StutterCloneAudioProcessor::findHighestHeldGestureNote() const noexcept
 {
-    for (int note = 127; note >= 0; --note)
+    for (int note = stutter::lastGestureNote; note >= stutter::firstGestureNote; --note)
         if (notesHeld[static_cast<size_t> (note)] != 0)
             return note;
 
     return -1;
 }
 
-int StutterCloneAudioProcessor::currentDivisionIndex() const noexcept
-{
-    if (midiDivisionOverride >= 0)
-        return juce::jlimit (0, numDivisions - 1, midiDivisionOverride);
-
-    return juce::jlimit (0, numDivisions - 1,
-                         juce::roundToInt (loopDivisionParam->load (std::memory_order_relaxed)));
-}
-
 int StutterCloneAudioProcessor::computeLoopLengthSamples() const noexcept
 {
-    const int divisionIndex = currentDivisionIndex();
-    double beats = beatsPerDivision[static_cast<size_t> (divisionIndex)];
-
-    if (paramOn (sweepParam))
-    {
-        const double t = juce::jlimit (0.0, 1.0,
-            static_cast<double> (sweepSamplesElapsed) / static_cast<double> (juce::jmax (1, sweepLengthSamples)));
-        const double targetBeats = beatsPerDivision.back();
-        beats = sweepStartBeats + (targetBeats - sweepStartBeats) * t;
-    }
-
+    const auto step = stutter::evaluateAction (playingAction, gestureBeat);
+    const double beats = stutter::beatsPerDivision[static_cast<size_t> (step.divisionIndex)];
     const double bpm = juce::jmax (20.0, static_cast<double> (currentBpm.load (std::memory_order_relaxed)));
     const int samples = juce::roundToInt ((beats * 60.0 / bpm) * currentSampleRate);
     return juce::jlimit (2, juce::jmax (2, ringBufferSize), samples);
@@ -594,8 +645,88 @@ void StutterCloneAudioProcessor::advanceLoopReadHead() noexcept
         ++loopCycleCount;
         loopLengthSamples = juce::jmin (computeLoopLengthSamples(), validSamplesInRing);
         loopLengthSamples = juce::jmax (2, loopLengthSamples);
-        activeDivisionIndex.store (currentDivisionIndex(), std::memory_order_relaxed);
     }
+}
+
+void StutterCloneAudioProcessor::publishWorkingPreset()
+{
+    const int dest = 1 - rtActionIndex.load (std::memory_order_relaxed);
+    copyActions (rtActions[static_cast<size_t> (dest)], workingPreset.actions);
+    rtActionIndex.store (dest, std::memory_order_release);
+}
+
+void StutterCloneAudioProcessor::replaceWorkingPreset (Preset preset, bool setQuantizeParam)
+{
+    workingPreset = std::move (preset);
+    workingPreset.quantizeIndex = juce::jlimit (0, stutter::numQuantizeChoices - 1, workingPreset.quantizeIndex);
+
+    if (setQuantizeParam)
+        if (auto* param = apvts.getParameter (quantizeParamId))
+            param->setValueNotifyingHost (param->convertTo0to1 (static_cast<float> (workingPreset.quantizeIndex)));
+
+    publishWorkingPreset();
+    sendChangeMessage();
+}
+
+void StutterCloneAudioProcessor::loadNamedPreset (const juce::String& name)
+{
+    replaceWorkingPreset (presetBank.loadPreset (name), true);
+}
+
+bool StutterCloneAudioProcessor::saveWorkingPreset()
+{
+    if (workingPreset.isFactory || workingPreset.name.isEmpty())
+        return false;
+
+    workingPreset.quantizeIndex = currentQuantizeIndex();
+    const bool ok = presetBank.saveUserPreset (workingPreset);
+    sendChangeMessage();
+    return ok;
+}
+
+bool StutterCloneAudioProcessor::saveWorkingPresetAs (const juce::String& name)
+{
+    const auto trimmed = name.trim();
+
+    if (trimmed.isEmpty() || presetBank.isFactoryName (trimmed))
+        return false;
+
+    workingPreset.name = trimmed;
+    workingPreset.isFactory = false;
+    workingPreset.quantizeIndex = currentQuantizeIndex();
+
+    if (! presetBank.saveUserPreset (workingPreset))
+        return false;
+
+    sendChangeMessage();
+    return true;
+}
+
+bool StutterCloneAudioProcessor::deleteNamedPreset (const juce::String& name)
+{
+    if (! presetBank.deleteUserPreset (name))
+        return false;
+
+    if (workingPreset.name == name)
+        replaceWorkingPreset (makeClassicPreset(), true);
+
+    sendChangeMessage();
+    return true;
+}
+
+void StutterCloneAudioProcessor::updateAction (int gestureIndex, const stutter::Action& action)
+{
+    if (gestureIndex < 0 || gestureIndex >= stutter::numGestureNotes)
+        return;
+
+    workingPreset.actions[static_cast<size_t> (gestureIndex)] = action;
+    workingPreset.isFactory = false;
+    publishWorkingPreset();
+}
+
+void StutterCloneAudioProcessor::setWorkingQuantizeIndex (int index)
+{
+    workingPreset.quantizeIndex = juce::jlimit (0, stutter::numQuantizeChoices - 1, index);
 }
 
 juce::AudioProcessorEditor* StutterCloneAudioProcessor::createEditor()
@@ -683,15 +814,46 @@ void StutterCloneAudioProcessor::publishWaveformSnapshot() noexcept
 
 void StutterCloneAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
+    workingPreset.quantizeIndex = currentQuantizeIndex();
+
+    juce::ValueTree root ("STUTTERCLONE");
+    root.appendChild (apvts.copyState(), nullptr);
+    root.appendChild (PresetBank::presetToValueTree (workingPreset), nullptr);
+
+    if (auto xml = root.createXml())
         copyXmlToBinary (*xml, destData);
 }
 
 void StutterCloneAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    auto xml = getXmlFromBinary (data, sizeInBytes);
+
+    if (xml == nullptr)
+        return;
+
+    if (xml->hasTagName ("STUTTERCLONE"))
+    {
+        auto root = juce::ValueTree::fromXml (*xml);
+        auto params = root.getChildWithName (apvts.state.getType());
+
+        if (params.isValid())
+            apvts.replaceState (params);
+
+        auto presetTree = root.getChildWithName ("PRESET");
+
+        if (presetTree.isValid())
+            replaceWorkingPreset (PresetBank::presetFromValueTree (presetTree), false);
+        else
+            replaceWorkingPreset (makeClassicPreset(), false);
+
+        return;
+    }
+
+    if (xml->hasTagName (apvts.state.getType()))
+    {
+        // Legacy session: APVTS-only. Drop old FX params and load Classic.
+        replaceWorkingPreset (makeClassicPreset(), true);
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

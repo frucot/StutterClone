@@ -7,6 +7,9 @@ CMakeCache.txt
 CMakeUserPresets.json
 compile_commands.json
 
+.cursor/
+*.code-workspace
+
 # IDEs
 /.idea/
 /.vscode/

@@ -1,13 +1,16 @@
 #pragma once
 
+#include "Action.h"
 #include "DspChain.h"
+#include "PresetBank.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
 #include <atomic>
 
-class StutterCloneAudioProcessor final : public juce::AudioProcessor
+class StutterCloneAudioProcessor final : public juce::AudioProcessor,
+                                         public juce::ChangeBroadcaster
 {
 public:
     StutterCloneAudioProcessor();
@@ -37,41 +40,32 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
+    PresetBank& getPresetBank() noexcept { return presetBank; }
+    const Preset& getWorkingPreset() const noexcept { return workingPreset; }
+    Preset& getWorkingPreset() noexcept { return workingPreset; }
+
+    void publishWorkingPreset();
+    void replaceWorkingPreset (Preset preset, bool setQuantizeParam);
+    void loadNamedPreset (const juce::String& name);
+    bool saveWorkingPreset();
+    bool saveWorkingPresetAs (const juce::String& name);
+    bool deleteNamedPreset (const juce::String& name);
+    void updateAction (int gestureIndex, const stutter::Action& action);
+    void setWorkingQuantizeIndex (int index);
 
     float getCurrentBpm() const noexcept { return currentBpm.load (std::memory_order_relaxed); }
     double getPpqPosition() const noexcept { return ppqPosition.load (std::memory_order_relaxed); }
     bool isStutterActive() const noexcept { return stutterActive.load (std::memory_order_relaxed); }
+    bool isGesturePending() const noexcept { return gesturePending.load (std::memory_order_relaxed); }
     int getGestureNote() const noexcept { return gestureNote.load (std::memory_order_relaxed); }
+    int getPendingNote() const noexcept { return pendingNoteAtomic.load (std::memory_order_relaxed); }
     int getActiveDivisionIndex() const noexcept { return activeDivisionIndex.load (std::memory_order_relaxed); }
+    int getActiveStep() const noexcept { return activeStep.load (std::memory_order_relaxed); }
+    float getGestureBeat() const noexcept { return gestureBeatAtomic.load (std::memory_order_relaxed); }
+    uint16_t getHeldGestureMask() const noexcept { return heldGestureMask.load (std::memory_order_relaxed); }
 
     static constexpr int waveformBins = 256;
-    static constexpr int numDivisions = 5;
-    static constexpr const char* loopDivisionParamId = "loopDivision";
-    static constexpr const char* sweepParamId = "sweep";
-    static constexpr const char* reverseParamId = "reverse";
-    static constexpr const char* alternatePanParamId = "alternatePan";
-
-    static constexpr const char* filterOnParamId = "filterOn";
-    static constexpr const char* filterTypeParamId = "filterType";
-    static constexpr const char* filterCutoffStartParamId = "filterCutoffStart";
-    static constexpr const char* filterCutoffEndParamId = "filterCutoffEnd";
-    static constexpr const char* filterResonanceParamId = "filterResonance";
-
-    static constexpr const char* loFiOnParamId = "loFiOn";
-    static constexpr const char* loFiBitsParamId = "loFiBits";
-    static constexpr const char* loFiDownsampleParamId = "loFiDownsample";
-
-    static constexpr const char* delayOnParamId = "delayOn";
-    static constexpr const char* delayMixParamId = "delayMix";
-    static constexpr const char* delayDivisionParamId = "delayDivision";
-    static constexpr const char* delayFeedbackParamId = "delayFeedback";
-    static constexpr const char* delayCutParamId = "delayCut";
-
-    static constexpr const char* reverbOnParamId = "reverbOn";
-    static constexpr const char* reverbMixParamId = "reverbMix";
-    static constexpr const char* reverbSizeParamId = "reverbSize";
-    static constexpr const char* reverbDampingParamId = "reverbDamping";
-    static constexpr const char* reverbCutParamId = "reverbCut";
+    static constexpr const char* quantizeParamId = "quantize";
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
@@ -96,40 +90,27 @@ private:
     void processAudioSlice (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
     void processFxSlice (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
     void writeToRingBuffer (const juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
+    void armPending (int midiNote) noexcept;
+    void cancelPending() noexcept;
     void startStutter (int midiNote) noexcept;
     void stopStutter() noexcept;
     void resetHeldNotes() noexcept;
-    int findHighestHeldNote() const noexcept;
-    int currentDivisionIndex() const noexcept;
+    int findHighestHeldGestureNote() const noexcept;
     int computeLoopLengthSamples() const noexcept;
+    void applyEvaluatedStep (const stutter::EvaluatedStep& step) noexcept;
     float readRingAtLoopOffset (int channel, int offset) const noexcept;
     float readLoopedSample (int channel) const noexcept;
     void advanceLoopReadHead() noexcept;
     void publishWaveformSnapshot() noexcept;
+    const stutter::Action& rtActionForNote (int midiNote) const noexcept;
+    int currentQuantizeIndex() const noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
-    std::atomic<float>* loopDivisionParam = nullptr;
-    std::atomic<float>* sweepParam = nullptr;
-    std::atomic<float>* reverseParam = nullptr;
-    std::atomic<float>* alternatePanParam = nullptr;
-    std::atomic<float>* filterOnParam = nullptr;
-    std::atomic<float>* filterTypeParam = nullptr;
-    std::atomic<float>* filterCutoffStartParam = nullptr;
-    std::atomic<float>* filterCutoffEndParam = nullptr;
-    std::atomic<float>* filterResonanceParam = nullptr;
-    std::atomic<float>* loFiOnParam = nullptr;
-    std::atomic<float>* loFiBitsParam = nullptr;
-    std::atomic<float>* loFiDownsampleParam = nullptr;
-    std::atomic<float>* delayOnParam = nullptr;
-    std::atomic<float>* delayMixParam = nullptr;
-    std::atomic<float>* delayDivisionParam = nullptr;
-    std::atomic<float>* delayFeedbackParam = nullptr;
-    std::atomic<float>* delayCutParam = nullptr;
-    std::atomic<float>* reverbOnParam = nullptr;
-    std::atomic<float>* reverbMixParam = nullptr;
-    std::atomic<float>* reverbSizeParam = nullptr;
-    std::atomic<float>* reverbDampingParam = nullptr;
-    std::atomic<float>* reverbCutParam = nullptr;
+    std::atomic<float>* quantizeParam = nullptr;
+    PresetBank presetBank;
+    Preset workingPreset;
+    std::array<std::array<stutter::Action, stutter::numGestureNotes>, 2> rtActions {};
+    std::atomic<int> rtActionIndex { 0 };
 
     GestureDspChain dspChain;
     juce::AudioBuffer<float> ringBuffer;
@@ -138,28 +119,38 @@ private:
     int validSamplesInRing = 0;
     int crossfadeSamples = 0;
     double currentSampleRate = 44100.0;
+    double ppqCursor = 0.0;
+    double ppqPerSample = 0.0;
+    double pendingGridPpq = 0.0;
 
     bool stutterIsOn = false;
     bool hasWrapped = false;
     bool reversePlayback = false;
+    bool pendingArmed = false;
     int heldNoteCount = 0;
     int stutterReadOffset = 0;
     int loopLengthSamples = 0;
     int loopStartInRing = 0;
     int fadeInRemaining = 0;
     int fadeOutRemaining = 0;
-    int midiDivisionOverride = -1;
-    int sweepSamplesElapsed = 0;
-    int sweepLengthSamples = 1;
     int loopCycleCount = 0;
-    double sweepStartBeats = 0.25;
+    int pendingNote = -1;
+    int playingNote = -1;
+    int lastStepIndex = -1;
+    double gestureBeat = 0.0;
+    stutter::Action playingAction {};
     std::array<uint8_t, 128> notesHeld {};
 
     std::atomic<float> currentBpm { 120.0f };
     std::atomic<double> ppqPosition { 0.0 };
     std::atomic<bool> stutterActive { false };
+    std::atomic<bool> gesturePending { false };
     std::atomic<int> gestureNote { -1 };
+    std::atomic<int> pendingNoteAtomic { -1 };
     std::atomic<int> activeDivisionIndex { 2 };
+    std::atomic<int> activeStep { 0 };
+    std::atomic<float> gestureBeatAtomic { 0.0f };
+    std::atomic<uint16_t> heldGestureMask { 0 };
     std::atomic<bool> editorOpen { false };
     std::atomic<int> waveformPublished { 0 };
     std::array<WaveformSnapshot, 2> waveformSnapshots {};
@@ -168,7 +159,6 @@ private:
 
     static constexpr double ringBufferSeconds = 4.0;
     static constexpr double crossfadeSeconds = 0.003;
-    static constexpr double sweepDurationBeats = 4.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StutterCloneAudioProcessor)
 };

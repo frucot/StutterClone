@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
+# Display version is 0.01; CMake/JUCE use semver 0.0.1 as the machine-readable equivalent.
+set(STUTTERCLONE_VERSION_STRING "0.01")
+
 project(StutterClone
-    VERSION 0.1.0
+    VERSION 0.0.1
     DESCRIPTION "Tempo-synced MIDI-triggered stutter effect"
     LANGUAGES C CXX)
 
@@ -34,11 +37,18 @@ FetchContent_MakeAvailable(juce)
 
 # AU must be a Music Effect (aumf) so hosts expose a MIDI input on an audio FX.
 # juce_add_plugin ignores AU on Windows/Linux automatically.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/Version.h
+    @ONLY)
+
 juce_add_plugin(StutterClone
     COMPANY_NAME "StutterClone"
+    COMPANY_COPYRIGHT "Copyright (c) 2026 Nicolas Frucot"
     BUNDLE_ID com.stutterclone.plugin
     PLUGIN_MANUFACTURER_CODE StCl
     PLUGIN_CODE Stc1
+    VERSION ${PROJECT_VERSION}
     FORMATS ${STUTTERCLONE_FORMATS}
     PRODUCT_NAME "StutterClone"
     PLUGIN_NAME "StutterClone"
@@ -55,18 +65,29 @@ juce_add_plugin(StutterClone
 
 target_sources(StutterClone
     PRIVATE
+        Source/Action.h
+        Source/ActionEditor.cpp
+        Source/ActionEditor.h
+        Source/CurveLane.cpp
+        Source/CurveLane.h
         Source/DspChain.cpp
         Source/DspChain.h
-        Source/WaveformDisplay.cpp
-        Source/WaveformDisplay.h
+        Source/NoteKeyboard.cpp
+        Source/NoteKeyboard.h
+        Source/PluginEditor.cpp
+        Source/PluginEditor.h
         Source/PluginProcessor.cpp
         Source/PluginProcessor.h
-        Source/PluginEditor.cpp
-        Source/PluginEditor.h)
+        Source/PresetBank.cpp
+        Source/PresetBank.h
+        Source/UiColours.h
+        Source/WaveformDisplay.cpp
+        Source/WaveformDisplay.h)
 
 target_include_directories(StutterClone
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+        ${CMAKE_CURRENT_SOURCE_DIR}/Source
+        ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 target_compile_definitions(StutterClone
     PUBLIC

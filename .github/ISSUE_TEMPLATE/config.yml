@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Developer guide
+    url: https://github.com/frucot/StutterClone/blob/main/docs/DEVELOPER.md
+    about: Build, architecture, and real-time rules
