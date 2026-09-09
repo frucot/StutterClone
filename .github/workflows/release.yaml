@@ -112,3 +112,5 @@ jobs:
         with:
           files: artifacts/*/*
           generate_release_notes: true
+          # A semver pre-release suffix such as v0.0.3-beta must not publish as a stable release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
