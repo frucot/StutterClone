@@ -94,12 +94,18 @@ void StutterCloneAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     clampedBpm = 120.0;
     hasSyncedPpq = false;
     stutterIsOn = false;
-    hasWrapped = false;
     reversePlayback = false;
     pendingArmed = false;
     stutterReadOffset = 0;
     loopLengthSamples = 0;
     loopStartInRing = 0;
+    seamMargin = 0;
+    seamOffset = 0;
+    seamLength = 0;
+    seamRemaining = 0;
+    seamReverse = false;
+    panGainL = 1.0f;
+    panGainR = 1.0f;
     fadeInRemaining = 0;
     fadeOutRemaining = 0;
     loopCycleCount = 0;
@@ -129,6 +135,7 @@ void StutterCloneAudioProcessor::releaseResources()
     stutterIsOn = false;
     fadeInRemaining = 0;
     fadeOutRemaining = 0;
+    seamRemaining = 0;
     beatsSinceCapture = 0.0;
     resetHeldNotes();
     cancelPending();
@@ -474,15 +481,21 @@ void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buf
             }
 
             const auto step = stutter::evaluateAction (playingAction, gestureBeat);
-            float panL = 1.0f;
-            float panR = 1.0f;
+            float targetL = 1.0f;
+            float targetR = 1.0f;
 
             if (step.altPan && numChannels > 1)
             {
                 const bool leftCycle = (loopCycleCount & 1) == 0;
-                panL = leftCycle ? 1.0f : 0.0f;
-                panR = leftCycle ? 0.0f : 1.0f;
+                targetL = leftCycle ? 1.0f : 0.0f;
+                targetR = leftCycle ? 0.0f : 1.0f;
             }
+
+            // Slew the alternating pan over the crossfade time: switching it on a sample boundary
+            // gates the channel and clicks on its own, regardless of the loop seam.
+            const float panStep = 1.0f / static_cast<float> (fadeNorm);
+            panGainL += juce::jlimit (-panStep, panStep, targetL - panGainL);
+            panGainR += juce::jlimit (-panStep, panStep, targetR - panGainR);
 
             const int sampleIndex = startSample + i;
 
@@ -490,7 +503,7 @@ void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buf
             {
                 const float live = buffer.getSample (channel, sampleIndex);
                 const float stutterSample = readLoopedSample (channel);
-                const float pan = channel == 0 ? panL : (channel == 1 ? panR : 1.0f);
+                const float pan = channel == 0 ? panGainL : (channel == 1 ? panGainR : 1.0f);
                 buffer.setSample (channel, sampleIndex, live * gainLive + stutterSample * gainStutter * pan);
             }
 
@@ -505,11 +518,18 @@ void StutterCloneAudioProcessor::applyEvaluatedStep (const stutter::EvaluatedSte
 {
     const int previousLength = loopLengthSamples;
     activeDivisionIndex.store (step.divisionIndex, std::memory_order_relaxed);
-    loopLengthSamples = juce::jmin (computeLoopLengthSamples(), validSamplesInRing);
-    loopLengthSamples = juce::jmax (2, loopLengthSamples);
+    loopLengthSamples = clampLoopLength (computeLoopLengthSamples());
 
     if (previousLength > 0 && stutterReadOffset >= loopLengthSamples)
+    {
+        // A shorter division drops the read head outside the loop. Keep the existing modulo
+        // placement, but splice from where the head was heading so the jump is cross-faded.
+        const int lastBefore = juce::jmax (0, previousLength - 1);
+        const int playBefore = reversePlayback ? (lastBefore - stutterReadOffset) : stutterReadOffset;
+
         stutterReadOffset %= loopLengthSamples;
+        beginSeam (playBefore + (reversePlayback ? -1 : 1), reversePlayback);
+    }
 }
 
 void StutterCloneAudioProcessor::processFxSlice (juce::AudioBuffer<float>& buffer,
@@ -604,19 +624,21 @@ void StutterCloneAudioProcessor::startStutter (int midiNote) noexcept
     beatsSinceCapture = 0.0;
     lastStepIndex = -1;
 
+    // A new gesture must not inherit the previous loop, or applyEvaluatedStep would splice a
+    // seam from a read position that belongs to a capture that is already gone.
+    loopLengthSamples = 0;
+    stutterReadOffset = 0;
+    seamRemaining = 0;
+
     const auto step = stutter::evaluateAction (playingAction, 0.0);
     applyEvaluatedStep (step);
     reversePlayback = step.reverse;
 
-    loopLengthSamples = juce::jmin (computeLoopLengthSamples(), validSamplesInRing);
-
-    if (loopLengthSamples < 2)
+    if (! captureLoopRegion())
         return;
 
-    loopStartInRing = wrapRingIndex (writePosition - loopLengthSamples, ringBufferSize);
-
-    stutterReadOffset = 0;
-    hasWrapped = false;
+    panGainL = 1.0f;
+    panGainR = 1.0f;
     fadeInRemaining = juce::jmin (crossfadeSamples, loopLengthSamples);
     fadeOutRemaining = 0;
     loopCycleCount = 0;
@@ -646,12 +668,53 @@ void StutterCloneAudioProcessor::stopStutter() noexcept
 
 void StutterCloneAudioProcessor::recaptureLoop() noexcept
 {
-    loopLengthSamples = juce::jmax (2, juce::jmin (computeLoopLengthSamples(), validSamplesInRing));
-    loopStartInRing = wrapRingIndex (writePosition - loopLengthSamples, ringBufferSize);
+    // Absolute ring position the outgoing capture was heading for, resolved before the new one
+    // moves loopStartInRing under our feet.
+    const int previousLast = juce::jmax (0, loopLengthSamples - 1);
+    const int previousPlay = reversePlayback ? (previousLast - stutterReadOffset) : stutterReadOffset;
+    const int continuation = loopStartInRing + previousPlay + (reversePlayback ? -1 : 1);
+
+    if (! captureLoopRegion())
+        return;
+
+    beginSeam (continuation - loopStartInRing, reversePlayback);
+}
+
+bool StutterCloneAudioProcessor::captureLoopRegion() noexcept
+{
+    if (validSamplesInRing < 2)
+        return false;
+
+    // A quarter of the valid audio keeps the margin small enough to never starve the loop itself
+    // when the ring has only just started filling.
+    seamMargin = juce::jmin (crossfadeSamples, juce::jmax (0, (validSamplesInRing - 2) / 4));
+
+    loopLengthSamples = clampLoopLength (computeLoopLengthSamples());
+    loopStartInRing = wrapRingIndex (writePosition - loopLengthSamples - seamMargin, ringBufferSize);
     stutterReadOffset = 0;
 
-    // Force the wrap crossfade so the seam into the fresh capture is smoothed like any loop wrap.
-    hasWrapped = true;
+    return true;
+}
+
+void StutterCloneAudioProcessor::beginSeam (int continuationOffset, bool reverse) noexcept
+{
+    const int length = juce::jmin (seamMargin, loopLengthSamples);
+
+    if (length <= 0)
+    {
+        seamRemaining = 0;
+        return;
+    }
+
+    // wrapRingIndex folds a single ring length, so normalise the splice point now: the seam then
+    // walks at most seamMargin samples away from an index that already sits inside the buffer.
+    const int normalised = wrapRingIndex (loopStartInRing + continuationOffset,
+                                          juce::jmax (1, ringBufferSize));
+
+    seamOffset = normalised - loopStartInRing;
+    seamReverse = reverse;
+    seamLength = length;
+    seamRemaining = length;
 }
 
 void StutterCloneAudioProcessor::resetHeldNotes() noexcept
@@ -678,6 +741,14 @@ int StutterCloneAudioProcessor::computeLoopLengthSamples() const noexcept
     return juce::jlimit (2, juce::jmax (2, ringBufferSize), samples);
 }
 
+int StutterCloneAudioProcessor::clampLoopLength (int samples) const noexcept
+{
+    // Both seam margins have to stay inside the valid audio, otherwise the seam would read the
+    // stale end of the ring rather than the continuation of the loop.
+    const int usable = juce::jmax (2, validSamplesInRing - 2 * seamMargin);
+    return juce::jlimit (2, usable, samples);
+}
+
 float StutterCloneAudioProcessor::readRingAtLoopOffset (int channel, int offset) const noexcept
 {
     const int size = juce::jmin (ringBufferSize, ringBuffer.getNumSamples());
@@ -697,16 +768,14 @@ float StutterCloneAudioProcessor::readLoopedSample (int channel) const noexcept
     const int playOffset = reversePlayback ? (last - stutterReadOffset) : stutterReadOffset;
     float sample = readRingAtLoopOffset (channel, playOffset);
 
-    const int wrapFade = juce::jmin (crossfadeSamples, loopLengthSamples / 4);
-
-    if (hasWrapped && wrapFade > 0 && stutterReadOffset < wrapFade)
+    if (seamRemaining > 0)
     {
-        const float fadeIn = static_cast<float> (stutterReadOffset) / static_cast<float> (wrapFade);
-        const int tailOffset = reversePlayback
-            ? (wrapFade - 1 - stutterReadOffset)
-            : (loopLengthSamples - wrapFade + stutterReadOffset);
-        const float fromEnd = readRingAtLoopOffset (channel, tailOffset);
-        sample = sample * fadeIn + fromEnd * (1.0f - fadeIn);
+        // The seam starts fully on the continuation, so the first sample after a splice follows
+        // the previous one exactly and the waveform never steps.
+        const float mix = static_cast<float> (seamLength - seamRemaining)
+                        / static_cast<float> (seamLength);
+        const float continued = readRingAtLoopOffset (channel, seamOffset);
+        sample = sample * mix + continued * (1.0f - mix);
     }
 
     return sample;
@@ -717,15 +786,23 @@ void StutterCloneAudioProcessor::advanceLoopReadHead() noexcept
     if (loopLengthSamples < 2)
         return;
 
+    if (seamRemaining > 0)
+    {
+        seamOffset += seamReverse ? -1 : 1;
+        --seamRemaining;
+    }
+
     ++stutterReadOffset;
 
     if (stutterReadOffset >= loopLengthSamples)
     {
+        // Splice from the material that runs past the end of the pass that just finished, which
+        // is what the seam margin was reserved for.
+        beginSeam (reversePlayback ? -1 : loopLengthSamples, reversePlayback);
+
         stutterReadOffset = 0;
-        hasWrapped = true;
         ++loopCycleCount;
-        loopLengthSamples = juce::jmin (computeLoopLengthSamples(), validSamplesInRing);
-        loopLengthSamples = juce::jmax (2, loopLengthSamples);
+        loopLengthSamples = clampLoopLength (computeLoopLengthSamples());
     }
 }
 

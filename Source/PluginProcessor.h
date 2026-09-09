@@ -95,9 +95,12 @@ private:
     void startStutter (int midiNote) noexcept;
     void stopStutter() noexcept;
     void recaptureLoop() noexcept;
+    bool captureLoopRegion() noexcept;
+    void beginSeam (int continuationOffset, bool reverse) noexcept;
     void resetHeldNotes() noexcept;
     int findHighestHeldGestureNote() const noexcept;
     int computeLoopLengthSamples() const noexcept;
+    int clampLoopLength (int samples) const noexcept;
     void applyEvaluatedStep (const stutter::EvaluatedStep& step) noexcept;
     float readRingAtLoopOffset (int channel, int offset) const noexcept;
     float readLoopedSample (int channel) const noexcept;
@@ -128,12 +131,20 @@ private:
 
     bool hasSyncedPpq = false;
     bool stutterIsOn = false;
-    bool hasWrapped = false;
     bool reversePlayback = false;
     bool pendingArmed = false;
     int stutterReadOffset = 0;
     int loopLengthSamples = 0;
     int loopStartInRing = 0;
+    // Samples reserved outside both ends of the loop so a seam can read the material that
+    // continues past the end it just left, instead of restarting the tail from inside the loop.
+    int seamMargin = 0;
+    int seamOffset = 0;
+    int seamLength = 0;
+    int seamRemaining = 0;
+    bool seamReverse = false;
+    float panGainL = 1.0f;
+    float panGainR = 1.0f;
     int fadeInRemaining = 0;
     int fadeOutRemaining = 0;
     int loopCycleCount = 0;
