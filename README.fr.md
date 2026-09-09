@@ -2,9 +2,9 @@
 
 [![Build](https://github.com/frucot/StutterClone/actions/workflows/build.yml/badge.svg)](https://github.com/frucot/StutterClone/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.3-cyan.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.0.4-cyan.svg)](CHANGELOG.md)
 
-**Version 0.0.3** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
+**Version 0.0.4** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
 
 [English](README.md) · [Guide développeur](docs/DEVELOPER.fr.md) · [Developer guide](docs/DEVELOPER.md)
 
@@ -69,7 +69,7 @@ Presets utilisateur :
 
 ## Versions
 
-La version publique est **0.0.3**. CMake et les métadonnées du plugin utilisent le même semver `0.0.3`. La chaîne affichée `STUTTERCLONE_VERSION_STRING` est définie dans [`CMakeLists.txt`](CMakeLists.txt) et générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
+La version publique est **0.0.4**. CMake et les métadonnées du plugin utilisent le même semver `0.0.4`. La chaîne affichée `STUTTERCLONE_VERSION_STRING` est définie dans [`CMakeLists.txt`](CMakeLists.txt) et générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuer
 

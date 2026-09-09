@@ -3,7 +3,21 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.3`).
+and the public display version now matches the CMake semver (`0.0.4`).
+
+## [0.0.4] - 2026-09-09
+
+### Changed
+
+- Single collapsible plugin window: the separate Action Editor window is gone
+- Compact header (BPM badge, MIDI status and gesture on one line)
+- Effect modules laid out in two columns, with Filter and Delay menus next to their group titles
+- Gate lanes (Reverse, Alt Pan, Filter/Lo-Fi/Delay/Reverb On) drawn as compact on/off toggles
+- Grid, Unfreeze Loop, Loop, Delay Cut and Reverb Cut on one toolbar row
+
+### Fixed
+
+- Reopening the editor restored a too-small host size, which hid lanes behind a scrollbar
 
 ## [0.0.3] - 2026-09-09
 
