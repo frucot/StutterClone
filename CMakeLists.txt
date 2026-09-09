@@ -105,3 +105,29 @@ target_link_libraries(StutterClone
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# JUCE ad-hoc signs bundles only inside its copy step, so builds with
+# COPY_PLUGIN_AFTER_BUILD=OFF ship moduleinfo.json outside the code signature and hosts reject them.
+if(APPLE)
+    set(stutterclone_signing_script
+        "${juce_SOURCE_DIR}/extras/Build/CMake/checkBundleSigning.cmake")
+
+    foreach(stutterclone_format IN LISTS STUTTERCLONE_FORMATS)
+        set(stutterclone_target "StutterClone_${stutterclone_format}")
+
+        if(NOT TARGET ${stutterclone_target})
+            continue()
+        endif()
+
+        get_target_property(stutterclone_artefact
+            ${stutterclone_target} JUCE_PLUGIN_ARTEFACT_FILE)
+
+        if(stutterclone_artefact AND EXISTS ${stutterclone_signing_script})
+            add_custom_command(TARGET ${stutterclone_target} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}"
+                    "-Dsrc=${stutterclone_artefact}"
+                    "-P" "${stutterclone_signing_script}"
+                VERBATIM)
+        endif()
+    endforeach()
+endif()
