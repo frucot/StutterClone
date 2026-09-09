@@ -52,6 +52,16 @@ namespace stutter
 
     constexpr const char* delayDivisionNames[] { "1/4", "1/8", "1/16", "1/32" };
 
+    constexpr int numLoopPeriods = 5;
+
+    constexpr const char* loopPeriodNames[numLoopPeriods] {
+        "1 Beat", "2 Beats", "3 Beats", "1 Bar", "2 Bars"
+    };
+
+    constexpr double loopPeriodBeats[numLoopPeriods] {
+        1.0, 2.0, 3.0, measureBeats, measureBeats * 2.0
+    };
+
     enum class Curve : int
     {
         Division = 0,
@@ -208,6 +218,8 @@ namespace stutter
         int delayDivision = 1;   // 0=1/4 .. 3=1/32
         int delayCut = 0;
         int reverbCut = 0;
+        int loopUnfreeze = 0;    // 0 keeps the capture from the gesture start
+        int loopPeriod = 3;      // 0=1 beat .. 4=2 bars
         float curves[numCurves][maxSteps] {};
     };
 
@@ -225,6 +237,8 @@ namespace stutter
         action.delayDivision = 1;
         action.delayCut = 0;
         action.reverbCut = 0;
+        action.loopUnfreeze = 0;
+        action.loopPeriod = 3;
 
         fillCurve (action, Curve::Division, divisionToNorm (2)); // 1/16
         fillCurve (action, Curve::Reverse, 0.0f);

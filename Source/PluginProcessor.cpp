@@ -107,6 +107,7 @@ void StutterCloneAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     playingNote = -1;
     lastStepIndex = -1;
     gestureBeat = 0.0;
+    beatsSinceCapture = 0.0;
     samplesUntilWaveformUpdate = 0;
     waveformUpdateInterval = juce::jmax (256, juce::roundToInt (sampleRate * 0.025));
     waveformSnapshots[0] = {};
@@ -128,6 +129,7 @@ void StutterCloneAudioProcessor::releaseResources()
     stutterIsOn = false;
     fadeInRemaining = 0;
     fadeOutRemaining = 0;
+    beatsSinceCapture = 0.0;
     resetHeldNotes();
     cancelPending();
     dspChain.reset();
@@ -427,6 +429,19 @@ void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buf
 
                 gestureBeat = wrapGestureBeat (gestureBeat + beatsPerSample);
 
+                if (playingAction.loopUnfreeze != 0)
+                {
+                    const auto periodIndex = static_cast<size_t> (juce::jlimit (0, stutter::numLoopPeriods - 1, playingAction.loopPeriod));
+                    const double period = stutter::loopPeriodBeats[periodIndex];
+                    beatsSinceCapture += beatsPerSample;
+
+                    if (beatsSinceCapture >= period)
+                    {
+                        beatsSinceCapture -= period;
+                        recaptureLoop();
+                    }
+                }
+
                 const auto step = stutter::evaluateAction (playingAction, gestureBeat);
                 const int stepIndex = stutter::stepIndexForBeat (gestureBeat, playingAction.gridResolution);
 
@@ -586,6 +601,7 @@ void StutterCloneAudioProcessor::startStutter (int midiNote) noexcept
     playingAction = rtActionForNote (midiNote);
     playingNote = midiNote;
     gestureBeat = 0.0;
+    beatsSinceCapture = 0.0;
     lastStepIndex = -1;
 
     const auto step = stutter::evaluateAction (playingAction, 0.0);
@@ -626,6 +642,16 @@ void StutterCloneAudioProcessor::stopStutter() noexcept
 
     if (playingAction.reverbCut != 0)
         dspChain.resetReverb();
+}
+
+void StutterCloneAudioProcessor::recaptureLoop() noexcept
+{
+    loopLengthSamples = juce::jmax (2, juce::jmin (computeLoopLengthSamples(), validSamplesInRing));
+    loopStartInRing = wrapRingIndex (writePosition - loopLengthSamples, ringBufferSize);
+    stutterReadOffset = 0;
+
+    // Force the wrap crossfade so the seam into the fresh capture is smoothed like any loop wrap.
+    hasWrapped = true;
 }
 
 void StutterCloneAudioProcessor::resetHeldNotes() noexcept

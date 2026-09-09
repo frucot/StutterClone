@@ -78,6 +78,20 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
         commitAction();
     };
 
+    loopPeriodLabel.setText ("Loop", juce::dontSendNotification);
+    loopPeriodLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.7f));
+    addAndMakeVisible (loopPeriodLabel);
+
+    for (int i = 0; i < stutter::numLoopPeriods; ++i)
+        loopPeriodBox.addItem (stutter::loopPeriodNames[i], i + 1);
+
+    styleCombo (loopPeriodBox);
+    loopPeriodBox.onChange = [this]
+    {
+        localAction.loopPeriod = juce::jlimit (0, stutter::numLoopPeriods - 1, loopPeriodBox.getSelectedItemIndex());
+        commitAction();
+    };
+
     styleToggle (delayCutButton);
     delayCutButton.onClick = [this]
     {
@@ -89,6 +103,14 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
     reverbCutButton.onClick = [this]
     {
         localAction.reverbCut = reverbCutButton.getToggleState() ? 1 : 0;
+        commitAction();
+    };
+
+    styleToggle (unfreezeButton);
+    unfreezeButton.onClick = [this]
+    {
+        localAction.loopUnfreeze = unfreezeButton.getToggleState() ? 1 : 0;
+        loopPeriodBox.setEnabled (localAction.loopUnfreeze != 0);
         commitAction();
     };
 
@@ -156,6 +178,10 @@ void ActionEditor::reloadFromProcessor()
     delayDivBox.setSelectedItemIndex (juce::jlimit (0, 3, localAction.delayDivision), juce::dontSendNotification);
     delayCutButton.setToggleState (localAction.delayCut != 0, juce::dontSendNotification);
     reverbCutButton.setToggleState (localAction.reverbCut != 0, juce::dontSendNotification);
+    loopPeriodBox.setSelectedItemIndex (juce::jlimit (0, stutter::numLoopPeriods - 1, localAction.loopPeriod),
+                                        juce::dontSendNotification);
+    unfreezeButton.setToggleState (localAction.loopUnfreeze != 0, juce::dontSendNotification);
+    loopPeriodBox.setEnabled (localAction.loopUnfreeze != 0);
 
     for (int i = 0; i < stutter::numCurves; ++i)
         lanes[static_cast<size_t> (i)]->setAction (&localAction, static_cast<stutter::Curve> (i));
@@ -191,11 +217,16 @@ void ActionEditor::resized()
     controls.removeFromLeft (8);
     delayDivLabel.setBounds (controls.removeFromLeft (44));
     delayDivBox.setBounds (controls.removeFromLeft (80));
+    controls.removeFromLeft (8);
+    loopPeriodLabel.setBounds (controls.removeFromLeft (36));
+    loopPeriodBox.setBounds (controls.removeFromLeft (84));
 
     bounds.removeFromTop (6);
     auto cuts = bounds.removeFromTop (22);
-    delayCutButton.setBounds (cuts.removeFromLeft (cuts.getWidth() / 2));
-    reverbCutButton.setBounds (cuts);
+    const int cutWidth = cuts.getWidth() / 3;
+    delayCutButton.setBounds (cuts.removeFromLeft (cutWidth));
+    reverbCutButton.setBounds (cuts.removeFromLeft (cutWidth));
+    unfreezeButton.setBounds (cuts);
 
     bounds.removeFromTop (8);
     viewport.setBounds (bounds);

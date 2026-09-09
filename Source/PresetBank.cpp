@@ -41,6 +41,8 @@ namespace
         tree.setProperty ("delayDivision", action.delayDivision, nullptr);
         tree.setProperty ("delayCut", action.delayCut != 0, nullptr);
         tree.setProperty ("reverbCut", action.reverbCut != 0, nullptr);
+        tree.setProperty ("loopUnfreeze", action.loopUnfreeze != 0, nullptr);
+        tree.setProperty ("loopPeriod", action.loopPeriod, nullptr);
 
         for (int c = 0; c < stutter::numCurves; ++c)
         {
@@ -75,6 +77,8 @@ namespace
         action.delayDivision = juce::jlimit (0, 3, static_cast<int> (tree.getProperty ("delayDivision", 1)));
         action.delayCut = static_cast<bool> (tree.getProperty ("delayCut", false)) ? 1 : 0;
         action.reverbCut = static_cast<bool> (tree.getProperty ("reverbCut", false)) ? 1 : 0;
+        action.loopUnfreeze = static_cast<bool> (tree.getProperty ("loopUnfreeze", false)) ? 1 : 0;
+        action.loopPeriod = juce::jlimit (0, stutter::numLoopPeriods - 1, static_cast<int> (tree.getProperty ("loopPeriod", 3)));
 
         for (const auto& child : tree)
         {

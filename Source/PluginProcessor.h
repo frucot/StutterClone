@@ -94,6 +94,7 @@ private:
     void cancelPending() noexcept;
     void startStutter (int midiNote) noexcept;
     void stopStutter() noexcept;
+    void recaptureLoop() noexcept;
     void resetHeldNotes() noexcept;
     int findHighestHeldGestureNote() const noexcept;
     int computeLoopLengthSamples() const noexcept;
@@ -140,6 +141,7 @@ private:
     int playingNote = -1;
     int lastStepIndex = -1;
     double gestureBeat = 0.0;
+    double beatsSinceCapture = 0.0;
     stutter::Action playingAction {};
 
     std::atomic<float> currentBpm { 120.0f };

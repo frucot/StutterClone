@@ -41,8 +41,11 @@ private:
     juce::ComboBox filterTypeBox;
     juce::Label delayDivLabel;
     juce::ComboBox delayDivBox;
+    juce::Label loopPeriodLabel;
+    juce::ComboBox loopPeriodBox;
     juce::ToggleButton delayCutButton { "Delay Cut on Release" };
     juce::ToggleButton reverbCutButton { "Reverb Cut on Release" };
+    juce::ToggleButton unfreezeButton { "Unfreeze Loop" };
 
     juce::Viewport viewport;
     juce::Component lanesContainer;
