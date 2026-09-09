@@ -29,6 +29,7 @@ private:
     bool showPlayhead = false;
     float playheadBeat = 0.0f;
     int lastEditedStep = -1;
+    float gateDragValue = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CurveLane)
 };

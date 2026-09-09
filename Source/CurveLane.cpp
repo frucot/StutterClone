@@ -60,7 +60,7 @@ void CurveLane::applyMouse (juce::Point<int> pos)
 
     const int steps = stutter::clampGridResolution (action->gridResolution);
     const int step = juce::jlimit (0, steps - 1, pos.x * steps / juce::jmax (1, getWidth()));
-    const float value = valueFromY (pos.y);
+    const float value = stutter::isGateCurve (curve) ? gateDragValue : valueFromY (pos.y);
     action->curves[static_cast<int> (curve)][step] = value;
     lastEditedStep = step;
     repaint();
@@ -71,6 +71,14 @@ void CurveLane::applyMouse (juce::Point<int> pos)
 
 void CurveLane::mouseDown (const juce::MouseEvent& event)
 {
+    if (action != nullptr && stutter::isGateCurve (curve) && getWidth() > 0)
+    {
+        const int steps = stutter::clampGridResolution (action->gridResolution);
+        const int step = juce::jlimit (0, steps - 1, event.x * steps / juce::jmax (1, getWidth()));
+        const bool currentlyOn = stutter::gateFromNorm (action->curves[static_cast<int> (curve)][step]);
+        gateDragValue = currentlyOn ? 0.0f : 1.0f;
+    }
+
     applyMouse (event.getPosition());
 }
 
@@ -91,32 +99,45 @@ void CurveLane::paint (juce::Graphics& g)
     const int steps = stutter::clampGridResolution (action->gridResolution);
     const float stepW = bounds.getWidth() / static_cast<float> (steps);
     const auto* values = action->curves[static_cast<int> (curve)];
+    const bool gateLane = stutter::isGateCurve (curve);
 
     for (int i = 0; i < steps; ++i)
     {
         const float stored = juce::jlimit (0.0f, 1.0f, values[i]);
-        const float n = stutter::isDivisionCurve (curve)
-                            ? stutter::durationNormFromDivision (stutter::divisionFromNorm (stored))
-                            : stored;
-        const float h = juce::jmax (2.0f, n * (bounds.getHeight() - 4.0f));
         const float x = bounds.getX() + static_cast<float> (i) * stepW;
-        const float y = bounds.getBottom() - 2.0f - h;
 
-        g.setColour (UiColours::accent.withAlpha (stutter::isGateCurve (curve) && stored < 0.5f ? 0.18f : 0.75f));
-        g.fillRect (x + 1.0f, y, stepW - 2.0f, h);
+        if (gateLane)
+        {
+            const bool on = stutter::gateFromNorm (stored);
+            auto cell = juce::Rectangle<float> (x + 1.0f, bounds.getY() + 2.0f,
+                                                stepW - 2.0f, bounds.getHeight() - 4.0f);
+            g.setColour (on ? UiColours::toggleOn : UiColours::toggleOff);
+            g.fillRoundedRectangle (cell, 2.0f);
+        }
+        else
+        {
+            const float n = stutter::isDivisionCurve (curve)
+                                ? stutter::durationNormFromDivision (stutter::divisionFromNorm (stored))
+                                : stored;
+            const float h = juce::jmax (2.0f, n * (bounds.getHeight() - 4.0f));
+            const float y = bounds.getBottom() - 2.0f - h;
+
+            g.setColour (UiColours::accent.withAlpha (0.75f));
+            g.fillRect (x + 1.0f, y, stepW - 2.0f, h);
+        }
 
         g.setColour (UiColours::grid);
         g.drawVerticalLine (juce::roundToInt (x), bounds.getY(), bounds.getBottom());
     }
 
-    g.setColour (UiColours::text.withAlpha (0.55f));
+    g.setColour (UiColours::text.withAlpha (gateLane ? 0.92f : 0.55f));
     g.setFont (juce::Font { juce::FontOptions { 11.0f } });
     g.drawText (stutter::curveLabel (curve),
                 bounds.reduced (6.0f, 2.0f),
                 juce::Justification::centredLeft);
 
     const int labelStep = lastEditedStep >= 0 ? juce::jlimit (0, steps - 1, lastEditedStep) : -1;
-    g.setColour (UiColours::text.withAlpha (0.7f));
+    g.setColour (UiColours::text.withAlpha (gateLane ? 0.9f : 0.7f));
     g.drawText (labelStep >= 0 ? valueLabel (values[labelStep]) : juce::String(),
                 bounds.reduced (6.0f, 2.0f),
                 juce::Justification::centredRight);

@@ -11,6 +11,8 @@ namespace UiColours
     const juce::Colour text       { 0xffe8edf7 };
     const juce::Colour grid       { 0xff2a3140 };
     const juce::Colour laneFill   { 0xff6ee7ff };
+    const juce::Colour toggleOn   { 0xff4ade80 };
+    const juce::Colour toggleOff  { 0xff3a4150 };
     const juce::Colour keyWhite   { 0xffe8edf7 };
     const juce::Colour keyBlack   { 0xff12151c };
 }

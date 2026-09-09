@@ -1,12 +1,15 @@
 #include "ActionEditor.h"
 #include "UiColours.h"
 
-#include <juce_audio_basics/juce_audio_basics.h>
-
 namespace
 {
     constexpr int laneHeight = 52;
-    constexpr int groupHeaderHeight = 22;
+    constexpr int gateLaneHeight = 22;
+    constexpr int groupHeaderHeight = 24;
+    constexpr int columnGap = 10;
+    constexpr int leftColumnGroups = 3;
+    constexpr int filterGroupIndex = 1;
+    constexpr int delayGroupIndex = 3;
 
     struct LaneGroup
     {
@@ -22,21 +25,35 @@ namespace
         { "Delay",   9, 3 },
         { "Reverb",  12, 4 }
     };
+
+    int lanesContentHeight() noexcept
+    {
+        int yLeft = 0;
+        int yRight = 0;
+        int curveIndex = 0;
+
+        for (size_t g = 0; g < sizeof (groups) / sizeof (groups[0]); ++g)
+        {
+            int& y = g >= static_cast<size_t> (leftColumnGroups) ? yRight : yLeft;
+            y += groupHeaderHeight;
+
+            for (int i = 0; i < groups[g].count; ++i, ++curveIndex)
+            {
+                const auto curve = static_cast<stutter::Curve> (curveIndex);
+                y += (stutter::isGateCurve (curve) ? gateLaneHeight : laneHeight) + 4;
+            }
+
+            y += 6;
+        }
+
+        return juce::jmax (yLeft, yRight);
+    }
 }
 
 ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
     : processor (p)
 {
-    titleLabel.setText ("Action", juce::dontSendNotification);
-    titleLabel.setColour (juce::Label::textColourId, UiColours::text);
-    titleLabel.setFont (juce::Font { juce::FontOptions { 18.0f, juce::Font::bold } });
-    addAndMakeVisible (titleLabel);
-
-    keyboard.onNoteClicked = [this] (int index)
-    {
-        setGestureIndex (index);
-    };
-    addAndMakeVisible (keyboard);
+    setOpaque (false);
 
     gridLabel.setText ("Grid", juce::dontSendNotification);
     gridLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.7f));
@@ -47,6 +64,7 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
     gridBox.addItem ("16", 16);
     gridBox.addItem ("32", 32);
     styleCombo (gridBox);
+    addAndMakeVisible (gridBox);
     gridBox.onChange = [this]
     {
         stutter::resampleGrid (localAction, gridBox.getSelectedId());
@@ -54,24 +72,18 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
         reloadFromProcessor();
     };
 
-    filterTypeLabel.setText ("Filter", juce::dontSendNotification);
-    filterTypeLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.7f));
-    addAndMakeVisible (filterTypeLabel);
-
     filterTypeBox.addItemList (juce::StringArray { "Lowpass", "Highpass", "Bandpass" }, 1);
     styleCombo (filterTypeBox);
+    lanesContainer.addAndMakeVisible (filterTypeBox);
     filterTypeBox.onChange = [this]
     {
         localAction.filterType = juce::jlimit (0, 2, filterTypeBox.getSelectedItemIndex());
         commitAction();
     };
 
-    delayDivLabel.setText ("Delay", juce::dontSendNotification);
-    delayDivLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.7f));
-    addAndMakeVisible (delayDivLabel);
-
     delayDivBox.addItemList (juce::StringArray { "1/4", "1/8", "1/16", "1/32" }, 1);
     styleCombo (delayDivBox);
+    lanesContainer.addAndMakeVisible (delayDivBox);
     delayDivBox.onChange = [this]
     {
         localAction.delayDivision = juce::jlimit (0, 3, delayDivBox.getSelectedItemIndex());
@@ -86,6 +98,7 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
         loopPeriodBox.addItem (stutter::loopPeriodNames[i], i + 1);
 
     styleCombo (loopPeriodBox);
+    addAndMakeVisible (loopPeriodBox);
     loopPeriodBox.onChange = [this]
     {
         localAction.loopPeriod = juce::jlimit (0, stutter::numLoopPeriods - 1, loopPeriodBox.getSelectedItemIndex());
@@ -129,8 +142,12 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
         lanesContainer.addAndMakeVisible (*lanes[static_cast<size_t> (i)]);
     }
 
+    filterTypeBox.toFront (false);
+    delayDivBox.toFront (false);
+
     viewport.setViewedComponent (&lanesContainer, false);
     viewport.setScrollBarsShown (true, false);
+    viewport.setOpaque (false);
     addAndMakeVisible (viewport);
 
     setGestureIndex (0);
@@ -148,7 +165,6 @@ void ActionEditor::styleCombo (juce::ComboBox& box)
     box.setColour (juce::ComboBox::backgroundColourId, UiColours::panel);
     box.setColour (juce::ComboBox::textColourId, UiColours::text);
     box.setColour (juce::ComboBox::outlineColourId, UiColours::accent.withAlpha (0.35f));
-    addAndMakeVisible (box);
 }
 
 void ActionEditor::styleToggle (juce::ToggleButton& button)
@@ -167,11 +183,6 @@ void ActionEditor::setGestureIndex (int index)
 void ActionEditor::reloadFromProcessor()
 {
     localAction = processor.getWorkingPreset().actions[static_cast<size_t> (gestureIndex)];
-    keyboard.setSelectedIndex (gestureIndex);
-
-    const auto noteName = juce::MidiMessage::getMidiNoteName (
-        stutter::noteForGestureIndex (gestureIndex), true, true, 3);
-    titleLabel.setText ("Action  |  " + noteName, juce::dontSendNotification);
 
     gridBox.setSelectedId (stutter::clampGridResolution (localAction.gridResolution), juce::dontSendNotification);
     filterTypeBox.setSelectedItemIndex (juce::jlimit (0, 2, localAction.filterType), juce::dontSendNotification);
@@ -195,100 +206,85 @@ void ActionEditor::commitAction()
     processor.updateAction (gestureIndex, localAction);
 }
 
-void ActionEditor::paint (juce::Graphics& g)
+int ActionEditor::getPreferredHeight() const noexcept
 {
-    g.fillAll (UiColours::background);
+    constexpr int controlsHeight = 26;
+    constexpr int controlsGap = 8;
+    return controlsHeight + controlsGap + lanesContentHeight();
 }
 
 void ActionEditor::resized()
 {
-    auto bounds = getLocalBounds().reduced (12);
-    titleLabel.setBounds (bounds.removeFromTop (24));
-    bounds.removeFromTop (8);
-    keyboard.setBounds (bounds.removeFromTop (72));
-    bounds.removeFromTop (8);
+    auto bounds = getLocalBounds();
 
-    auto controls = bounds.removeFromTop (28);
+    auto controls = bounds.removeFromTop (26);
     gridLabel.setBounds (controls.removeFromLeft (36));
-    gridBox.setBounds (controls.removeFromLeft (72));
-    controls.removeFromLeft (8);
-    filterTypeLabel.setBounds (controls.removeFromLeft (44));
-    filterTypeBox.setBounds (controls.removeFromLeft (110));
-    controls.removeFromLeft (8);
-    delayDivLabel.setBounds (controls.removeFromLeft (44));
-    delayDivBox.setBounds (controls.removeFromLeft (80));
+    gridBox.setBounds (controls.removeFromLeft (56));
+    controls.removeFromLeft (10);
+    unfreezeButton.setBounds (controls.removeFromLeft (120));
     controls.removeFromLeft (8);
     loopPeriodLabel.setBounds (controls.removeFromLeft (36));
     loopPeriodBox.setBounds (controls.removeFromLeft (84));
-
-    bounds.removeFromTop (6);
-    auto cuts = bounds.removeFromTop (22);
-    const int cutWidth = cuts.getWidth() / 3;
-    delayCutButton.setBounds (cuts.removeFromLeft (cutWidth));
-    reverbCutButton.setBounds (cuts.removeFromLeft (cutWidth));
-    unfreezeButton.setBounds (cuts);
+    controls.removeFromLeft (10);
+    delayCutButton.setBounds (controls.removeFromLeft (92));
+    controls.removeFromLeft (8);
+    reverbCutButton.setBounds (controls.removeFromLeft (100));
 
     bounds.removeFromTop (8);
     viewport.setBounds (bounds);
 
-    int y = 0;
+    const int availableW = juce::jmax (0, viewport.getWidth() - viewport.getScrollBarThickness() - 2);
+    const int colW = juce::jmax (0, (availableW - columnGap) / 2);
+    const int rightX = colW + columnGap;
+    const auto headerFont = juce::Font { juce::FontOptions { 13.0f, juce::Font::bold } };
+
+    int yLeft = 0;
+    int yRight = 0;
     int curveIndex = 0;
 
     for (size_t g = 0; g < groupLabels.size(); ++g)
     {
-        groupLabels[g].setBounds (0, y, viewport.getWidth() - 12, groupHeaderHeight);
+        const bool rightCol = g >= static_cast<size_t> (leftColumnGroups);
+        int& y = rightCol ? yRight : yLeft;
+        const int x = rightCol ? rightX : 0;
+        const int titleW = juce::jmin (colW,
+            juce::GlyphArrangement::getStringWidthInt (headerFont, groups[g].title) + 8);
+
+        groupLabels[g].setBounds (x, y, titleW, groupHeaderHeight);
+
+        if (g == static_cast<size_t> (filterGroupIndex))
+        {
+            const int comboW = juce::jlimit (titleW, colW - titleW - 4, titleW + 52);
+            filterTypeBox.setBounds (x + titleW, y, comboW, groupHeaderHeight);
+        }
+        else if (g == static_cast<size_t> (delayGroupIndex))
+        {
+            const int comboW = juce::jlimit (titleW, colW - titleW - 4, titleW + 28);
+            delayDivBox.setBounds (x + titleW, y, comboW, groupHeaderHeight);
+        }
+
         y += groupHeaderHeight;
 
         for (int i = 0; i < groups[g].count; ++i, ++curveIndex)
         {
-            lanes[static_cast<size_t> (curveIndex)]->setBounds (0, y, viewport.getWidth() - 18, laneHeight);
-            y += laneHeight + 4;
+            const auto curve = static_cast<stutter::Curve> (curveIndex);
+            const int height = stutter::isGateCurve (curve) ? gateLaneHeight : laneHeight;
+            lanes[static_cast<size_t> (curveIndex)]->setBounds (x, y, colW, height);
+            y += height + 4;
         }
 
         y += 6;
     }
 
-    lanesContainer.setBounds (0, 0, juce::jmax (0, viewport.getWidth() - 8), y);
+    lanesContainer.setBounds (0, 0, availableW, juce::jmax (yLeft, yRight));
 }
 
 void ActionEditor::timerCallback()
 {
-    keyboard.setHeldMask (processor.getHeldGestureMask());
-
     const bool playingThis = processor.isStutterActive()
                           && processor.getGestureNote() == stutter::noteForGestureIndex (gestureIndex);
     const float beat = processor.getGestureBeat();
 
     for (auto& lane : lanes)
         lane->setPlayhead (playingThis, beat);
-}
-
-ActionEditorWindow::ActionEditorWindow (StutterCloneAudioProcessor& processor, int gestureIndex)
-    : DocumentWindow ("Action Editor", UiColours::panel, DocumentWindow::closeButton),
-      editor (processor)
-{
-    setUsingNativeTitleBar (true);
-    setResizable (true, true);
-    setResizeLimits (560, 480, 1200, 1400);
-    editor.setSize (720, 820);
-    setContentNonOwned (&editor, true);
-    editor.setGestureIndex (gestureIndex);
-    centreWithSize (720, 860);
-}
-
-ActionEditorWindow::~ActionEditorWindow()
-{
-    clearContentComponent();
-}
-
-void ActionEditorWindow::closeButtonPressed()
-{
-    setVisible (false);
-}
-
-void ActionEditorWindow::setGestureIndex (int index)
-{
-    editor.setGestureIndex (index);
-    setVisible (true);
-    toFront (true);
 }

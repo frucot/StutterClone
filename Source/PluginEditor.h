@@ -17,6 +17,8 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override;
+    void visibilityChanged() override;
 
 private:
     void timerCallback() override;
@@ -25,7 +27,12 @@ private:
     void refreshPresetList();
     void styleCombo (juce::ComboBox& box);
     void styleButton (juce::TextButton& button);
-    void openActionEditor (int gestureIndex);
+    void selectGesture (int gestureIndex);
+    void setEditorExpanded (bool shouldExpand);
+    void updateEditorToggleText();
+    void applyResizeLimits();
+    int preferredExpandedHeight() const noexcept;
+    void applyPreferredExpandedSize();
     void promptSaveAs();
     void dismissSaveAsOverlay();
     void layoutSaveAsOverlay();
@@ -34,25 +41,25 @@ private:
 
     juce::Label titleLabel;
     juce::Label versionLabel;
+    juce::Label gestureValueLabel;
+    juce::Label bpmValueLabel;
+    juce::Label midiValueLabel;
     juce::ComboBox presetBox;
     juce::TextButton saveButton { "Save" };
     juce::TextButton saveAsButton { "Save As" };
     juce::TextButton deleteButton { "Delete" };
     juce::Label quantizeLabel;
     juce::ComboBox quantizeBox;
+    juce::TextButton editorToggle;
     WaveformDisplay waveformDisplay;
-    juce::Label bpmTitleLabel;
-    juce::Label bpmValueLabel;
-    juce::Label midiTitleLabel;
-    juce::Label midiValueLabel;
-    juce::Label gestureTitleLabel;
-    juce::Label gestureValueLabel;
     NoteKeyboard keyboard;
-    juce::TextButton editButton { "Edit Action" };
+    ActionEditor actionEditor;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> quantizeAttachment;
-    std::unique_ptr<ActionEditorWindow> actionWindow;
     std::unique_ptr<juce::Component> saveAsOverlay;
+
+    bool editorExpanded = true;
+    int lastExpandedHeight = 760;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StutterCloneAudioProcessorEditor)
 };
