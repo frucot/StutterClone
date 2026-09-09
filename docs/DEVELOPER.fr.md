@@ -1,6 +1,6 @@
 # Guide développeur
 
-Document pour compiler, déboguer ou étendre StutterClone. Pour l'installation utilisateur, voir [README.fr.md](../README.fr.md). English: [DEVELOPER.md](DEVELOPER.md).
+Document pour compiler, déboguer ou étendre StutterClone. Pour jouer du plugin, voir le [manuel utilisateur](USER_MANUAL.fr.md). Pour l'installation courte, voir [README.fr.md](../README.fr.md). English: [DEVELOPER.md](DEVELOPER.md).
 
 ## Organisation du dépôt
 

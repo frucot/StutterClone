@@ -6,7 +6,7 @@
 
 **Version 0.0.4** — MIDI-triggered, tempo-synced stutter / glitch effect for VST3, AU, and standalone.
 
-[Français](README.fr.md) · [Developer guide](docs/DEVELOPER.md) · [Guide développeur](docs/DEVELOPER.fr.md)
+[Français](README.fr.md) · [User manual](docs/USER_MANUAL.md) · [Manuel utilisateur](docs/USER_MANUAL.fr.md) · [Developer guide](docs/DEVELOPER.md) · [Guide développeur](docs/DEVELOPER.fr.md)
 
 ## What it is
 
@@ -56,10 +56,14 @@ Rescan plugins (or restart the DAW) before loading a new build.
 
 ## Usage
 
+See the [user manual](docs/USER_MANUAL.md) for the full walkthrough (interface, actions, presets) and a **step-by-step Ableton Live MIDI routing** example.
+
+Short version:
+
 1. Insert **StutterClone** as an **audio effect** on an audio track.
 2. Route MIDI into the plugin (AU is registered as a Music Effect so hosts expose a MIDI input).
-3. Play or hold notes **C3–B3**. The effect waits for the next quantize grid (or starts immediately if Quantize is `None`), then loops the captured slice for one bar while the note is held.
-4. Open **Edit Action** to draw curves for that note. Save the twelve actions as a preset.
+3. Play or hold notes **C3–B3**. The effect waits for the next quantize grid (or starts immediately if Quantize is `None`), then loops the captured slice while the note is held.
+4. Click a key on the plugin keyboard to edit that note's curves. Save the twelve actions as a preset.
 
 User presets are stored in:
 

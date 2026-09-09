@@ -1,6 +1,6 @@
 # Developer guide
 
-This document is for people who want to build, debug, or extend StutterClone. For user-facing installation, see [README.md](../README.md). Guide en français : [DEVELOPER.fr.md](DEVELOPER.fr.md).
+This document is for people who want to build, debug, or extend StutterClone. For playing the plugin, see the [user manual](USER_MANUAL.md). For a short install overview, see [README.md](../README.md). Guide en français : [DEVELOPER.fr.md](DEVELOPER.fr.md).
 
 ## Repository layout
 
