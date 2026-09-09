@@ -24,8 +24,8 @@ Source/
 
 There is one source of truth in `CMakeLists.txt`:
 
-1. `project(StutterClone VERSION 0.0.2 …)` — semantic version used by CMake and JUCE (`JucePlugin_Version`).
-2. `STUTTERCLONE_VERSION_STRING` (`"0.0.2"`) — string shown in the editor and in human-facing docs.
+1. `project(StutterClone VERSION 0.0.3 …)` — semantic version used by CMake and JUCE (`JucePlugin_Version`).
+2. `STUTTERCLONE_VERSION_STRING` (`"0.0.3"`) — string shown in the editor and in human-facing docs.
 
 CMake generates `build/generated/Version.h` from `Source/Version.h.in`. Include `"Version.h"` anywhere you need the display string.
 

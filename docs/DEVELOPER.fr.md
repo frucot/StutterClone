@@ -24,8 +24,8 @@ Source/
 
 Une seule source de vérité dans `CMakeLists.txt` :
 
-1. `project(StutterClone VERSION 0.0.2 …)` — semver utilisé par CMake et JUCE (`JucePlugin_Version`).
-2. `STUTTERCLONE_VERSION_STRING` (`"0.0.2"`) — chaîne affichée dans l'éditeur et la doc.
+1. `project(StutterClone VERSION 0.0.3 …)` — semver utilisé par CMake et JUCE (`JucePlugin_Version`).
+2. `STUTTERCLONE_VERSION_STRING` (`"0.0.3"`) — chaîne affichée dans l'éditeur et la doc.
 
 CMake génère `build/generated/Version.h` à partir de `Source/Version.h.in`. Inclure `"Version.h"` pour la chaîne d'affichage.
 

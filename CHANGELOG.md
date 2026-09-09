@@ -3,7 +3,22 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.2`).
+and the public display version now matches the CMake semver (`0.0.3`).
+
+## [0.0.3] - 2026-09-09
+
+### Added
+
+- Loop unfreeze per gesture: re-capture the ring loop every 1, 2 or 3 beats, or every 1 or 2 bars,
+  with Freeze still the default
+
+### Fixed
+
+- Clicks on every loop repetition: the wrap cross-fade faded the loop head against the loop's own
+  tail, which stepped the waveform back by the fade length instead of joining it
+- Clicks from the alternating pan, which switched a channel on a single sample boundary
+- macOS bundles left with an invalid code signature when the plugin copy step is disabled, which
+  made hosts reject the VST3 on a fresh scan
 
 ## [0.0.2] - 2026-09-08
 
