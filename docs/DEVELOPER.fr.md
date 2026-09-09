@@ -24,16 +24,16 @@ Source/
 
 Une seule source de vérité dans `CMakeLists.txt` :
 
-1. `project(StutterClone VERSION 0.0.3 …)` — semver utilisé par CMake et JUCE (`JucePlugin_Version`).
-2. `STUTTERCLONE_VERSION_STRING` (`"0.0.3"`) — chaîne affichée dans l'éditeur et la doc.
+1. `project(StutterClone VERSION 0.0.4 …)` — semver utilisé par CMake et JUCE (`JucePlugin_Version`).
+2. `STUTTERCLONE_VERSION_STRING` (`"0.0.4"`) — chaîne affichée dans l'éditeur et la doc.
 
 CMake génère `build/generated/Version.h` à partir de `Source/Version.h.in`. Inclure `"Version.h"` pour la chaîne d'affichage.
 
 Pour une release :
 
-1. Incrémenter les deux valeurs ensemble (par exemple `0.0.3` / `"0.0.3"`).
+1. Incrémenter les deux valeurs ensemble (par exemple `0.0.4` / `"0.0.4"`).
 2. Ajouter une entrée dans [CHANGELOG.md](../CHANGELOG.md).
-3. Commit, tag (`git tag v0.0.3`), pousser le tag.
+3. Commit, tag (`git tag v0.0.4`), pousser le tag.
 
 ## Règles temps réel
 

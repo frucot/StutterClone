@@ -122,10 +122,26 @@ namespace
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SavePresetOverlay)
     };
+
+    constexpr int kEditorWidth = 920;
+    constexpr int kCollapsedHeight = 230;
+    constexpr int kMinWidth = 760;
+    constexpr int kMaxWidth = 1200;
+    constexpr int kMaxHeight = 1100;
+    constexpr int kHeaderBarHeight = 36;
+    constexpr int kCompactChromeHeight = 8 + 22 + 10 + 26 + 8 + 72 + 8 + 56 + 8 + 8;
+
+    void setupBadge (juce::Label& label)
+    {
+        label.setJustificationType (juce::Justification::centred);
+        label.setColour (juce::Label::backgroundColourId, UiColours::background);
+        label.setColour (juce::Label::textColourId, UiColours::accent);
+        label.setFont (juce::Font { juce::FontOptions { 13.0f, juce::Font::bold } });
+    }
 }
 
 StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterCloneAudioProcessor& p)
-    : AudioProcessorEditor (&p), processorRef (p), waveformDisplay (p)
+    : AudioProcessorEditor (&p), processorRef (p), waveformDisplay (p), actionEditor (p)
 {
     processorRef.setEditorOpen (true);
     processorRef.addChangeListener (this);
@@ -133,32 +149,24 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
     titleLabel.setText ("StutterClone", juce::dontSendNotification);
     titleLabel.setJustificationType (juce::Justification::centredLeft);
     titleLabel.setColour (juce::Label::textColourId, UiColours::text);
-    titleLabel.setFont (juce::Font { juce::FontOptions { 22.0f, juce::Font::bold } });
+    titleLabel.setFont (juce::Font { juce::FontOptions { 18.0f, juce::Font::bold } });
     addAndMakeVisible (titleLabel);
 
     versionLabel.setText (STUTTERCLONE_VERSION_STRING, juce::dontSendNotification);
-    versionLabel.setJustificationType (juce::Justification::centredRight);
+    versionLabel.setJustificationType (juce::Justification::centredLeft);
     versionLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.45f));
     versionLabel.setFont (juce::Font { juce::FontOptions { 13.0f } });
     addAndMakeVisible (versionLabel);
 
-    auto setupCaption = [this] (juce::Label& label, const juce::String& text)
-    {
-        label.setText (text, juce::dontSendNotification);
-        label.setJustificationType (juce::Justification::centredLeft);
-        label.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.65f));
-        label.setFont (juce::Font { juce::FontOptions { 13.0f } });
-        addAndMakeVisible (label);
-    };
+    gestureValueLabel.setJustificationType (juce::Justification::centred);
+    gestureValueLabel.setColour (juce::Label::textColourId, UiColours::accent);
+    gestureValueLabel.setFont (juce::Font { juce::FontOptions { 13.0f } });
+    addAndMakeVisible (gestureValueLabel);
 
-    auto setupValue = [this] (juce::Label& label)
-    {
-        label.setJustificationType (juce::Justification::centred);
-        label.setColour (juce::Label::backgroundColourId, UiColours::panel);
-        label.setColour (juce::Label::textColourId, UiColours::accent);
-        label.setFont (juce::Font { juce::FontOptions { 18.0f, juce::Font::bold } });
-        addAndMakeVisible (label);
-    };
+    setupBadge (bpmValueLabel);
+    addAndMakeVisible (bpmValueLabel);
+    setupBadge (midiValueLabel);
+    addAndMakeVisible (midiValueLabel);
 
     styleCombo (presetBox);
     presetBox.onChange = [this]
@@ -190,7 +198,11 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
             processorRef.deleteNamedPreset (name);
     };
 
-    setupCaption (quantizeLabel, "Quantize");
+    quantizeLabel.setText ("Quantize", juce::dontSendNotification);
+    quantizeLabel.setJustificationType (juce::Justification::centredRight);
+    quantizeLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.65f));
+    quantizeLabel.setFont (juce::Font { juce::FontOptions { 13.0f } });
+    addAndMakeVisible (quantizeLabel);
     styleCombo (quantizeBox);
 
     if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (
@@ -205,38 +217,39 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
         processorRef.setWorkingQuantizeIndex (quantizeBox.getSelectedItemIndex());
     };
 
-    addAndMakeVisible (waveformDisplay);
+    styleButton (editorToggle);
+    editorToggle.onClick = [this] { setEditorExpanded (! editorExpanded); };
+    updateEditorToggleText();
 
-    setupCaption (bpmTitleLabel, "BPM");
-    setupCaption (midiTitleLabel, "MIDI Trigger");
-    setupCaption (gestureTitleLabel, "Gesture");
-    setupValue (bpmValueLabel);
-    setupValue (midiValueLabel);
-    setupValue (gestureValueLabel);
+    addAndMakeVisible (waveformDisplay);
 
     keyboard.onNoteClicked = [this] (int index)
     {
-        openActionEditor (index);
+        selectGesture (index);
     };
     addAndMakeVisible (keyboard);
-
-    styleButton (editButton);
-    editButton.onClick = [this]
-    {
-        openActionEditor (keyboard.getSelectedIndex());
-    };
+    addAndMakeVisible (actionEditor);
 
     refreshPresetList();
-    setSize (540, 520);
+    setResizable (true, true);
+    lastExpandedHeight = preferredExpandedHeight();
+    applyResizeLimits();
+    setSize (kEditorWidth, lastExpandedHeight);
     updateStatusDisplay();
     startTimerHz (30);
+
+    juce::Component::SafePointer<StutterCloneAudioProcessorEditor> safe { this };
+    juce::MessageManager::callAsync ([safe]
+    {
+        if (safe != nullptr)
+            safe->applyPreferredExpandedSize();
+    });
 }
 
 StutterCloneAudioProcessorEditor::~StutterCloneAudioProcessorEditor()
 {
     stopTimer();
     processorRef.removeChangeListener (this);
-    actionWindow.reset();
     processorRef.setEditorOpen (false);
 }
 
@@ -276,17 +289,84 @@ void StutterCloneAudioProcessorEditor::refreshPresetList()
     deleteButton.setEnabled (! processorRef.getPresetBank().isFactoryName (current));
 }
 
-void StutterCloneAudioProcessorEditor::openActionEditor (int gestureIndex)
+void StutterCloneAudioProcessorEditor::selectGesture (int gestureIndex)
 {
     keyboard.setSelectedIndex (gestureIndex);
+    actionEditor.setGestureIndex (gestureIndex);
 
-    if (actionWindow == nullptr)
-        actionWindow = std::make_unique<ActionEditorWindow> (processorRef, gestureIndex);
+    if (! editorExpanded)
+        setEditorExpanded (true);
+}
+
+void StutterCloneAudioProcessorEditor::updateEditorToggleText()
+{
+    editorToggle.setButtonText (editorExpanded ? juce::String::fromUTF8 ("▾ Editor")
+                                               : juce::String::fromUTF8 ("▸ Editor"));
+}
+
+void StutterCloneAudioProcessorEditor::applyResizeLimits()
+{
+    if (editorExpanded)
+        setResizeLimits (kMinWidth, preferredExpandedHeight(), kMaxWidth, kMaxHeight);
     else
-        actionWindow->setGestureIndex (gestureIndex);
+        setResizeLimits (kMinWidth, kCollapsedHeight, kMaxWidth, kCollapsedHeight);
+}
 
-    actionWindow->setVisible (true);
-    actionWindow->toFront (true);
+int StutterCloneAudioProcessorEditor::preferredExpandedHeight() const noexcept
+{
+    return kCompactChromeHeight + actionEditor.getPreferredHeight();
+}
+
+void StutterCloneAudioProcessorEditor::applyPreferredExpandedSize()
+{
+    if (! editorExpanded)
+        return;
+
+    applyResizeLimits();
+
+    const int width = juce::jlimit (kMinWidth, kMaxWidth, juce::jmax (kEditorWidth, getWidth()));
+    const int height = juce::jlimit (preferredExpandedHeight(), kMaxHeight,
+                                     juce::jmax (preferredExpandedHeight(), lastExpandedHeight));
+
+    if (getWidth() != width || getHeight() < preferredExpandedHeight())
+        setSize (width, height);
+}
+
+void StutterCloneAudioProcessorEditor::parentHierarchyChanged()
+{
+    applyPreferredExpandedSize();
+}
+
+void StutterCloneAudioProcessorEditor::visibilityChanged()
+{
+    if (isVisible())
+        applyPreferredExpandedSize();
+}
+
+void StutterCloneAudioProcessorEditor::setEditorExpanded (bool shouldExpand)
+{
+    if (editorExpanded == shouldExpand)
+        return;
+
+    if (editorExpanded)
+        lastExpandedHeight = juce::jmax (getHeight(), preferredExpandedHeight());
+
+    editorExpanded = shouldExpand;
+    actionEditor.setVisible (editorExpanded);
+    updateEditorToggleText();
+    applyResizeLimits();
+
+    const int width = juce::jlimit (kMinWidth, kMaxWidth, getWidth());
+
+    if (editorExpanded)
+    {
+        lastExpandedHeight = juce::jmax (lastExpandedHeight, preferredExpandedHeight());
+        setSize (width, juce::jlimit (preferredExpandedHeight(), kMaxHeight, lastExpandedHeight));
+    }
+    else
+    {
+        setSize (width, kCollapsedHeight);
+    }
 }
 
 void StutterCloneAudioProcessorEditor::dismissSaveAsOverlay()
@@ -325,29 +405,40 @@ void StutterCloneAudioProcessorEditor::promptSaveAs()
 void StutterCloneAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     refreshPresetList();
-
-    if (actionWindow != nullptr)
-        actionWindow->getEditor().setGestureIndex (actionWindow->getEditor().getGestureIndex());
+    actionEditor.setGestureIndex (actionEditor.getGestureIndex());
 }
 
 void StutterCloneAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (UiColours::background);
     g.setColour (UiColours::panel);
-    g.fillRect (0, 0, getWidth(), 56);
+    g.fillRect (0, 0, getWidth(), kHeaderBarHeight);
     g.setColour (UiColours::accent);
-    g.fillRect (0, 56, getWidth(), 2);
+    g.fillRect (0, kHeaderBarHeight, getWidth(), 2);
 }
 
 void StutterCloneAudioProcessorEditor::resized()
 {
-    auto bounds = getLocalBounds().reduced (16);
-    auto titleRow = bounds.removeFromTop (24);
-    versionLabel.setBounds (titleRow.removeFromRight (48));
-    titleLabel.setBounds (titleRow);
+    auto bounds = getLocalBounds().reduced (12, 8);
+
+    auto titleRow = bounds.removeFromTop (22);
+    midiValueLabel.setBounds (titleRow.removeFromRight (80));
+    titleRow.removeFromRight (6);
+    bpmValueLabel.setBounds (titleRow.removeFromRight (72));
+    titleRow.removeFromRight (10);
+    titleLabel.setBounds (titleRow.removeFromLeft (140));
+    versionLabel.setBounds (titleRow.removeFromLeft (40));
+    titleRow.removeFromLeft (8);
+    gestureValueLabel.setBounds (titleRow);
+
     bounds.removeFromTop (10);
 
     auto presetRow = bounds.removeFromTop (26);
+    editorToggle.setBounds (presetRow.removeFromRight (88));
+    presetRow.removeFromRight (8);
+    quantizeBox.setBounds (presetRow.removeFromRight (110));
+    presetRow.removeFromRight (4);
+    quantizeLabel.setBounds (presetRow.removeFromRight (72));
     presetBox.setBounds (presetRow.removeFromLeft (180));
     presetRow.removeFromLeft (6);
     saveButton.setBounds (presetRow.removeFromLeft (64));
@@ -357,30 +448,20 @@ void StutterCloneAudioProcessorEditor::resized()
     deleteButton.setBounds (presetRow.removeFromLeft (64));
 
     bounds.removeFromTop (8);
-    auto quantRow = bounds.removeFromTop (26);
-    quantizeLabel.setBounds (quantRow.removeFromLeft (72));
-    quantizeBox.setBounds (quantRow.removeFromLeft (110));
-
-    bounds.removeFromTop (10);
-    waveformDisplay.setBounds (bounds.removeFromTop (96));
-    bounds.removeFromTop (12);
-
-    auto status = bounds.removeFromTop (58);
-    auto bpmArea = status.removeFromLeft ((status.getWidth() - 12) / 2);
-    status.removeFromLeft (12);
-    bpmTitleLabel.setBounds (bpmArea.removeFromTop (16));
-    bpmValueLabel.setBounds (bpmArea);
-    midiTitleLabel.setBounds (status.removeFromTop (16));
-    midiValueLabel.setBounds (status);
-
+    waveformDisplay.setBounds (bounds.removeFromTop (72));
     bounds.removeFromTop (8);
-    gestureTitleLabel.setBounds (bounds.removeFromTop (16));
-    gestureValueLabel.setBounds (bounds.removeFromTop (26));
+    keyboard.setBounds (bounds.removeFromTop (56));
 
-    bounds.removeFromTop (10);
-    keyboard.setBounds (bounds.removeFromTop (78));
-    bounds.removeFromTop (8);
-    editButton.setBounds (bounds.removeFromTop (28).removeFromLeft (140));
+    if (editorExpanded)
+    {
+        bounds.removeFromTop (8);
+        actionEditor.setBounds (bounds);
+        lastExpandedHeight = juce::jmax (getHeight(), preferredExpandedHeight());
+    }
+    else
+    {
+        actionEditor.setBounds ({});
+    }
 
     layoutSaveAsOverlay();
 }
