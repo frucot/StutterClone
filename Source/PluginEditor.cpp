@@ -141,7 +141,7 @@ namespace
 }
 
 StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterCloneAudioProcessor& p)
-    : AudioProcessorEditor (&p), processorRef (p), waveformDisplay (p), actionEditor (p)
+    : AudioProcessorEditor (&p), processorRef (p)
 {
     processorRef.setEditorOpen (true);
     processorRef.addChangeListener (this);
@@ -221,29 +221,26 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
     editorToggle.onClick = [this] { setEditorExpanded (! editorExpanded); };
     updateEditorToggleText();
 
-    addAndMakeVisible (waveformDisplay);
+    waveformDisplay = std::make_unique<WaveformDisplay> (processorRef);
+    addAndMakeVisible (*waveformDisplay);
 
-    keyboard.onNoteClicked = [this] (int index)
+    keyboard = std::make_unique<NoteKeyboard>();
+    keyboard->onNoteClicked = [this] (int index)
     {
         selectGesture (index);
     };
-    addAndMakeVisible (keyboard);
-    addAndMakeVisible (actionEditor);
+    addAndMakeVisible (*keyboard);
+
+    actionEditor = std::make_unique<ActionEditor> (processorRef);
+    addAndMakeVisible (*actionEditor);
 
     refreshPresetList();
-    setResizable (true, true);
     lastExpandedHeight = preferredExpandedHeight();
-    applyResizeLimits();
     setSize (kEditorWidth, lastExpandedHeight);
+    applyResizeLimits();
+    setResizable (true, true);
     updateStatusDisplay();
     startTimerHz (30);
-
-    juce::Component::SafePointer<StutterCloneAudioProcessorEditor> safe { this };
-    juce::MessageManager::callAsync ([safe]
-    {
-        if (safe != nullptr)
-            safe->applyPreferredExpandedSize();
-    });
 }
 
 StutterCloneAudioProcessorEditor::~StutterCloneAudioProcessorEditor()
@@ -291,8 +288,13 @@ void StutterCloneAudioProcessorEditor::refreshPresetList()
 
 void StutterCloneAudioProcessorEditor::selectGesture (int gestureIndex)
 {
-    keyboard.setSelectedIndex (gestureIndex);
-    actionEditor.setGestureIndex (gestureIndex);
+    jassert (keyboard != nullptr && actionEditor != nullptr);
+
+    if (keyboard == nullptr || actionEditor == nullptr)
+        return;
+
+    keyboard->setSelectedIndex (gestureIndex);
+    actionEditor->setGestureIndex (gestureIndex);
 
     if (! editorExpanded)
         setEditorExpanded (true);
@@ -314,33 +316,27 @@ void StutterCloneAudioProcessorEditor::applyResizeLimits()
 
 int StutterCloneAudioProcessorEditor::preferredExpandedHeight() const noexcept
 {
-    return kCompactChromeHeight + actionEditor.getPreferredHeight();
+    jassert (actionEditor != nullptr);
+
+    if (actionEditor == nullptr)
+        return kCollapsedHeight;
+
+    return kCompactChromeHeight + actionEditor->getPreferredHeight();
 }
 
-void StutterCloneAudioProcessorEditor::applyPreferredExpandedSize()
+void StutterCloneAudioProcessorEditor::updateHostViewAttached() noexcept
 {
-    if (! editorExpanded)
-        return;
-
-    applyResizeLimits();
-
-    const int width = juce::jlimit (kMinWidth, kMaxWidth, juce::jmax (kEditorWidth, getWidth()));
-    const int height = juce::jlimit (preferredExpandedHeight(), kMaxHeight,
-                                     juce::jmax (preferredExpandedHeight(), lastExpandedHeight));
-
-    if (getWidth() != width || getHeight() < preferredExpandedHeight())
-        setSize (width, height);
+    hostViewAttached = getPeer() != nullptr;
 }
 
 void StutterCloneAudioProcessorEditor::parentHierarchyChanged()
 {
-    applyPreferredExpandedSize();
+    updateHostViewAttached();
 }
 
 void StutterCloneAudioProcessorEditor::visibilityChanged()
 {
-    if (isVisible())
-        applyPreferredExpandedSize();
+    updateHostViewAttached();
 }
 
 void StutterCloneAudioProcessorEditor::setEditorExpanded (bool shouldExpand)
@@ -352,8 +348,15 @@ void StutterCloneAudioProcessorEditor::setEditorExpanded (bool shouldExpand)
         lastExpandedHeight = juce::jmax (getHeight(), preferredExpandedHeight());
 
     editorExpanded = shouldExpand;
-    actionEditor.setVisible (editorExpanded);
+
+    if (actionEditor != nullptr)
+        actionEditor->setVisible (editorExpanded);
+
     updateEditorToggleText();
+
+    if (! hostViewAttached || getPeer() == nullptr)
+        return;
+
     applyResizeLimits();
 
     const int width = juce::jlimit (kMinWidth, kMaxWidth, getWidth());
@@ -405,7 +408,9 @@ void StutterCloneAudioProcessorEditor::promptSaveAs()
 void StutterCloneAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     refreshPresetList();
-    actionEditor.setGestureIndex (actionEditor.getGestureIndex());
+
+    if (actionEditor != nullptr)
+        actionEditor->setGestureIndex (actionEditor->getGestureIndex());
 }
 
 void StutterCloneAudioProcessorEditor::paint (juce::Graphics& g)
@@ -448,19 +453,31 @@ void StutterCloneAudioProcessorEditor::resized()
     deleteButton.setBounds (presetRow.removeFromLeft (64));
 
     bounds.removeFromTop (8);
-    waveformDisplay.setBounds (bounds.removeFromTop (72));
+
+    if (waveformDisplay != nullptr)
+        waveformDisplay->setBounds (bounds.removeFromTop (72));
+    else
+        bounds.removeFromTop (72);
+
     bounds.removeFromTop (8);
-    keyboard.setBounds (bounds.removeFromTop (56));
+
+    if (keyboard != nullptr)
+        keyboard->setBounds (bounds.removeFromTop (56));
+    else
+        bounds.removeFromTop (56);
 
     if (editorExpanded)
     {
         bounds.removeFromTop (8);
-        actionEditor.setBounds (bounds);
+
+        if (actionEditor != nullptr)
+            actionEditor->setBounds (bounds);
+
         lastExpandedHeight = juce::jmax (getHeight(), preferredExpandedHeight());
     }
-    else
+    else if (actionEditor != nullptr)
     {
-        actionEditor.setBounds ({});
+        actionEditor->setBounds ({});
     }
 
     layoutSaveAsOverlay();
@@ -468,9 +485,15 @@ void StutterCloneAudioProcessorEditor::resized()
 
 void StutterCloneAudioProcessorEditor::timerCallback()
 {
-    waveformDisplay.pullSnapshot();
-    waveformDisplay.repaint();
-    keyboard.setHeldMask (processorRef.getHeldGestureMask());
+    if (waveformDisplay != nullptr)
+    {
+        waveformDisplay->pullSnapshot();
+        waveformDisplay->repaint();
+    }
+
+    if (keyboard != nullptr)
+        keyboard->setHeldMask (processorRef.getHeldGestureMask());
+
     updateStatusDisplay();
 }
 

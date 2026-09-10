@@ -32,7 +32,7 @@ private:
     void updateEditorToggleText();
     void applyResizeLimits();
     int preferredExpandedHeight() const noexcept;
-    void applyPreferredExpandedSize();
+    void updateHostViewAttached() noexcept;
     void promptSaveAs();
     void dismissSaveAsOverlay();
     void layoutSaveAsOverlay();
@@ -51,14 +51,15 @@ private:
     juce::Label quantizeLabel;
     juce::ComboBox quantizeBox;
     juce::TextButton editorToggle;
-    WaveformDisplay waveformDisplay;
-    NoteKeyboard keyboard;
-    ActionEditor actionEditor;
+    std::unique_ptr<WaveformDisplay> waveformDisplay;
+    std::unique_ptr<NoteKeyboard> keyboard;
+    std::unique_ptr<ActionEditor> actionEditor;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> quantizeAttachment;
     std::unique_ptr<juce::Component> saveAsOverlay;
 
     bool editorExpanded = true;
+    bool hostViewAttached = false;
     int lastExpandedHeight = 760;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StutterCloneAudioProcessorEditor)

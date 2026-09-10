@@ -146,14 +146,20 @@ void StutterCloneAudioProcessor::releaseResources()
 
 bool StutterCloneAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    const auto& mainOut = layouts.getMainOutputChannelSet();
-    const auto& mainIn  = layouts.getMainInputChannelSet();
-
-    if (mainOut != juce::AudioChannelSet::mono()
-        && mainOut != juce::AudioChannelSet::stereo())
+    if (layouts.inputBuses.size() != 1 || layouts.outputBuses.size() != 1)
         return false;
 
-    return mainIn == mainOut;
+    const auto& mainIn  = layouts.getMainInputChannelSet();
+    const auto& mainOut = layouts.getMainOutputChannelSet();
+
+    if (mainIn.isDisabled() || mainOut.isDisabled())
+        return false;
+
+    if (mainIn != mainOut)
+        return false;
+
+    return mainIn == juce::AudioChannelSet::mono()
+        || mainIn == juce::AudioChannelSet::stereo();
 }
 
 void StutterCloneAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
