@@ -62,6 +62,9 @@ public:
     int getActiveStep() const noexcept { return activeStep.load (std::memory_order_relaxed); }
     float getGestureBeat() const noexcept { return gestureBeatAtomic.load (std::memory_order_relaxed); }
     uint16_t getHeldGestureMask() const noexcept { return heldGestureMask.load (std::memory_order_relaxed); }
+    int getFirstGestureNote() const noexcept { return firstGestureNote.load (std::memory_order_relaxed); }
+    void setFirstGestureNote (int midiNote);
+    void setUiGestureHeld (int gestureIndex, bool held) noexcept;
 
     static constexpr int waveformBins = 256;
     static constexpr const char* quantizeParamId = "quantize";
@@ -98,6 +101,7 @@ private:
     bool captureLoopRegion() noexcept;
     void beginSeam (int continuationOffset, bool reverse) noexcept;
     void resetHeldNotes() noexcept;
+    void applyHeldMask() noexcept;
     int findHighestHeldGestureNote() const noexcept;
     int computeLoopLengthSamples() const noexcept;
     int clampLoopLength (int samples) const noexcept;
@@ -108,6 +112,8 @@ private:
     void publishWaveformSnapshot() noexcept;
     const stutter::Action& rtActionForNote (int midiNote) const noexcept;
     int currentQuantizeIndex() const noexcept;
+    int currentFirstGestureNote() const noexcept;
+    void applyGestureOctaveIfChanged() noexcept;
 
     juce::AudioProcessorValueTreeState apvts;
     std::atomic<float>* quantizeParam = nullptr;
@@ -161,10 +167,15 @@ private:
     std::atomic<bool> gesturePending { false };
     std::atomic<int> gestureNote { -1 };
     std::atomic<int> pendingNoteAtomic { -1 };
-    std::atomic<int> activeDivisionIndex { 2 };
+    std::atomic<int> activeDivisionIndex { stutter::div1_16 };
     std::atomic<int> activeStep { 0 };
     std::atomic<float> gestureBeatAtomic { 0.0f };
     std::atomic<uint16_t> heldGestureMask { 0 };
+    std::atomic<uint16_t> midiHeldGestureMask { 0 };
+    std::atomic<uint16_t> uiHeldGestureMask { 0 };
+    uint16_t lastCombinedHeldMask = 0;
+    std::atomic<int> firstGestureNote { stutter::defaultFirstGestureNote };
+    int audioFirstGestureNote = stutter::defaultFirstGestureNote;
     std::atomic<bool> editorOpen { false };
     std::atomic<int> waveformPublished { 0 };
     std::atomic<uint32_t> waveformSequence { 0 };
@@ -172,7 +183,7 @@ private:
     int samplesUntilWaveformUpdate = 0;
     int waveformUpdateInterval = 1024;
 
-    static constexpr double ringBufferSeconds = 4.0;
+    static constexpr double ringBufferSeconds = 12.0;
     static constexpr double crossfadeSeconds = 0.003;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StutterCloneAudioProcessor)

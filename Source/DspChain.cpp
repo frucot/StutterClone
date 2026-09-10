@@ -122,24 +122,7 @@ void GestureDspChain::process (juce::AudioBuffer<float>& buffer,
     }
 
     if (settings.reverbOn || reverbMixSmoothed.getCurrentValue() > 0.0001f)
-    {
-        juce::dsp::Reverb::Parameters reverbParams;
-        const float mix = reverbMixSmoothed.getCurrentValue();
-        reverbParams.roomSize = juce::jlimit (0.0f, 1.0f, settings.reverbSize);
-        reverbParams.damping = juce::jlimit (0.0f, 1.0f, settings.reverbDamping);
-        reverbParams.width = 1.0f;
-        reverbParams.freezeMode = 0.0f;
-        reverbParams.dryLevel = 1.0f - mix;
-        reverbParams.wetLevel = mix;
-        reverb.setParameters (reverbParams);
-        reverb.setEnabled (true);
-
-        auto block = juce::dsp::AudioBlock<float> (scratch)
-                         .getSubsetChannelBlock (0, static_cast<size_t> (numChannels))
-                         .getSubBlock (0, static_cast<size_t> (numSamples));
-        juce::dsp::ProcessContextReplacing<float> context (block);
-        reverb.process (context);
-    }
+        processReverb (numChannels, numSamples, settings);
 
     if (settings.feedEffects)
     {
@@ -155,40 +138,54 @@ void GestureDspChain::process (juce::AudioBuffer<float>& buffer,
 
 void GestureDspChain::processScratchSample (int numChannels, float* frame, const Settings& settings) noexcept
 {
+    processFilter (numChannels, frame, settings);
+    processLoFi (numChannels, frame, settings);
+    processDelay (numChannels, frame, settings);
+    reverbMixSmoothed.skip (1);
+}
+
+void GestureDspChain::processFilter (int numChannels, float* frame, const Settings& settings) noexcept
+{
     const float cutoff = cutoffSmoothed.getNextValue();
     filter.setCutoffFrequency (cutoff);
 
-    if (settings.filterOn)
+    if (! settings.filterOn)
+        return;
+
+    for (int channel = 0; channel < numChannels; ++channel)
+        frame[channel] = filter.processSample (channel, frame[channel]);
+}
+
+void GestureDspChain::processLoFi (int numChannels, float* frame, const Settings& settings) noexcept
+{
+    if (! settings.loFiOn)
+        return;
+
+    const int factor = juce::jmax (1, settings.downsample);
+
+    if (downsampleHold == 0)
     {
         for (int channel = 0; channel < numChannels; ++channel)
-            frame[channel] = filter.processSample (channel, frame[channel]);
+            heldSample[static_cast<size_t> (channel)] = frame[channel];
     }
 
-    if (settings.loFiOn)
+    ++downsampleHold;
+
+    if (downsampleHold >= factor)
+        downsampleHold = 0;
+
+    const float bits = juce::jlimit (1.0f, 16.0f, settings.bitDepth);
+    const float scale = std::exp2 (bits - 1.0f);
+
+    for (int channel = 0; channel < numChannels; ++channel)
     {
-        const int factor = juce::jmax (1, settings.downsample);
-
-        if (downsampleHold == 0)
-        {
-            for (int channel = 0; channel < numChannels; ++channel)
-                heldSample[static_cast<size_t> (channel)] = frame[channel];
-        }
-
-        ++downsampleHold;
-
-        if (downsampleHold >= factor)
-            downsampleHold = 0;
-
-        const float bits = juce::jlimit (1.0f, 16.0f, settings.bitDepth);
-        const float scale = std::exp2 (bits - 1.0f);
-
-        for (int channel = 0; channel < numChannels; ++channel)
-        {
-            const float held = heldSample[static_cast<size_t> (channel)];
-            frame[channel] = std::round (held * scale) / scale;
-        }
+        const float held = heldSample[static_cast<size_t> (channel)];
+        frame[channel] = std::round (held * scale) / scale;
     }
+}
 
+void GestureDspChain::processDelay (int numChannels, float* frame, const Settings& settings) noexcept
+{
     const float delayMix = delayMixSmoothed.getNextValue();
     const float feedback = juce::jlimit (0.0f, 0.95f, settings.delayFeedback);
 
@@ -199,6 +196,24 @@ void GestureDspChain::processScratchSample (int numChannels, float* frame, const
         delayLine.pushSample (channel, input + delayed * feedback);
         frame[channel] = input * (1.0f - delayMix) + delayed * delayMix;
     }
+}
 
-    reverbMixSmoothed.skip (1);
+void GestureDspChain::processReverb (int numChannels, int numSamples, const Settings& settings) noexcept
+{
+    juce::dsp::Reverb::Parameters reverbParams;
+    const float mix = reverbMixSmoothed.getCurrentValue();
+    reverbParams.roomSize = juce::jlimit (0.0f, 1.0f, settings.reverbSize);
+    reverbParams.damping = juce::jlimit (0.0f, 1.0f, settings.reverbDamping);
+    reverbParams.width = 1.0f;
+    reverbParams.freezeMode = 0.0f;
+    reverbParams.dryLevel = 1.0f - mix;
+    reverbParams.wetLevel = mix;
+    reverb.setParameters (reverbParams);
+    reverb.setEnabled (true);
+
+    auto block = juce::dsp::AudioBlock<float> (scratch)
+                     .getSubsetChannelBlock (0, static_cast<size_t> (numChannels))
+                     .getSubBlock (0, static_cast<size_t> (numSamples));
+    juce::dsp::ProcessContextReplacing<float> context (block);
+    reverb.process (context);
 }

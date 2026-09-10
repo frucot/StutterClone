@@ -2,9 +2,9 @@
 
 [![Build](https://github.com/frucot/StutterClone/actions/workflows/build.yml/badge.svg)](https://github.com/frucot/StutterClone/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.5--beta-cyan.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.0.5-cyan.svg)](CHANGELOG.md)
 
-**Version 0.0.5-beta** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
+**Version 0.0.5** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
 
 [English](README.md) · [Manuel utilisateur](docs/USER_MANUAL.fr.md) · [User manual](docs/USER_MANUAL.md) · [Guide développeur](docs/DEVELOPER.fr.md) · [Developer guide](docs/DEVELOPER.md)
 
@@ -18,9 +18,12 @@ Ce projet est indépendant et n'est affilié à aucun produit commercial de stut
 
 ## Fonctionnalités
 
-- Beat repeat synchronisé au tempo, divisions droites, triolets et sextolets
-- Éditeur d'action par note (C3–B3) avec courbes dessinables
+- Beat repeat synchronisé au tempo, divisions droites et triolets (`1/1` à `1/64`)
+- Éditeur d'action par note (douze slots, MIDI 60–71 par défaut) avec courbes dessinables
+- Octave - / + décalent toute la fenêtre de 12 notes MIDI (C2 / C3 / C4 …)
 - Quantize de départ : `None`, `1/4`, `1/8`, `1/16`, `1/32`
+- Ping-Pong par action (mesure à l'endroit puis à l'envers)
+- Overlay d'aide dans le plugin
 - Preset d'usine **Classic** et presets utilisateur sur disque
 - Affichage de la forme d'onde du buffer circulaire
 - Formats : **VST3** (macOS, Windows, Linux), **AU** (macOS), **Standalone**
@@ -73,7 +76,7 @@ Presets utilisateur :
 
 ## Versions
 
-La version publique est **0.0.5-beta**. CMake et JUCE utilisent le semver numérique `0.0.5` ; la chaîne affichée `STUTTERCLONE_VERSION_STRING` est `0.0.5-beta`. Les deux sont définies dans [`CMakeLists.txt`](CMakeLists.txt) et la chaîne est générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
+La version publique est **0.0.5**. CMake, JUCE et `STUTTERCLONE_VERSION_STRING` utilisent tous `0.0.5`. Ils sont définis dans [`CMakeLists.txt`](CMakeLists.txt) et la chaîne d'affichage est générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuer
 

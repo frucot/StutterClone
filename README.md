@@ -2,9 +2,9 @@
 
 [![Build](https://github.com/frucot/StutterClone/actions/workflows/build.yml/badge.svg)](https://github.com/frucot/StutterClone/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.5--beta-cyan.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.0.5-cyan.svg)](CHANGELOG.md)
 
-**Version 0.0.5-beta** — MIDI-triggered, tempo-synced stutter / glitch effect for VST3, AU, and standalone.
+**Version 0.0.5** — MIDI-triggered, tempo-synced stutter / glitch effect for VST3, AU, and standalone.
 
 [Français](README.fr.md) · [User manual](docs/USER_MANUAL.md) · [Manuel utilisateur](docs/USER_MANUAL.fr.md) · [Developer guide](docs/DEVELOPER.md) · [Guide développeur](docs/DEVELOPER.fr.md)
 
@@ -18,9 +18,12 @@ This project is independent and is not affiliated with any commercial stutter pr
 
 ## Features
 
-- Tempo-synced beat repeat with straight, triplet, and sextuplet divisions
-- Per-note action editor (C3–B3) with drawable parameter curves
+- Tempo-synced beat repeat with straight and triplet divisions (`1/1` to `1/64`)
+- Per-note action editor (twelve slots, default MIDI 60–71) with drawable parameter curves
+- Octave - / + shift the whole slot window by 12 MIDI notes (C2 / C3 / C4 …)
 - Quantize start: `None`, `1/4`, `1/8`, `1/16`, `1/32`
+- Ping-Pong playback of each action (forward then reverse over two bars)
+- In-plugin help overlay
 - Factory preset **Classic** plus user presets on disk
 - Live waveform display of the capture ring
 - Formats: **VST3** (macOS, Windows, Linux), **AU** (macOS), **Standalone**
@@ -73,7 +76,7 @@ User presets are stored in:
 
 ## Versioning
 
-The public version is **0.0.5-beta**. CMake and JUCE use the numeric semver `0.0.5`; the display string `STUTTERCLONE_VERSION_STRING` is `0.0.5-beta`. Both are defined in [`CMakeLists.txt`](CMakeLists.txt) and the string is generated into `Version.h`. Change those two places together when you bump a release. See [CHANGELOG.md](CHANGELOG.md).
+The public version is **0.0.5**. CMake, JUCE, and `STUTTERCLONE_VERSION_STRING` all use `0.0.5`. They are defined in [`CMakeLists.txt`](CMakeLists.txt) and the display string is generated into `Version.h`. Change those two places together when you bump a release. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 

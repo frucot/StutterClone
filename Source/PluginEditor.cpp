@@ -2,6 +2,8 @@
 #include "UiColours.h"
 #include "Version.h"
 
+#include <juce_audio_basics/juce_audio_basics.h>
+
 namespace
 {
     class SavePresetOverlay final : public juce::Component
@@ -123,6 +125,121 @@ namespace
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SavePresetOverlay)
     };
 
+    class HelpOverlay final : public juce::Component
+    {
+    public:
+        std::function<void()> onClose;
+
+        HelpOverlay()
+        {
+            setOpaque (false);
+            setWantsKeyboardFocus (true);
+
+            title.setText ("How StutterClone works", juce::dontSendNotification);
+            title.setJustificationType (juce::Justification::centred);
+            title.setColour (juce::Label::textColourId, UiColours::text);
+            title.setFont (juce::Font { juce::FontOptions { 16.0f, juce::Font::bold } });
+            addAndMakeVisible (title);
+
+            body.setMultiLine (true);
+            body.setReadOnly (true);
+            body.setCaretVisible (false);
+            body.setScrollbarsShown (true);
+            body.setColour (juce::TextEditor::backgroundColourId, UiColours::background);
+            body.setColour (juce::TextEditor::textColourId, UiColours::text);
+            body.setColour (juce::TextEditor::outlineColourId, UiColours::accent.withAlpha (0.35f));
+            body.setColour (juce::TextEditor::focusedOutlineColourId, UiColours::accent.withAlpha (0.35f));
+            body.setFont (juce::Font { juce::FontOptions { 13.0f } });
+            body.setText (
+                "StutterClone is an audio insert with a MIDI input, not a synth.\n"
+                "\n"
+                "Routing\n"
+                "- Put it on an audio track (or group / return).\n"
+                "- Send MIDI into the plugin itself (a MIDI track pointed at the insert).\n"
+                "- FX before the plugin are captured in the loop; FX after process the stutter.\n"
+                "\n"
+                "Gestures\n"
+                "- Hold a MIDI note, or click-and-hold a key on the plugin keyboard, to capture and loop.\n"
+                "- Cyan key = slot selected for editing. Orange overlay = note currently sounding.\n"
+                "- Octave - / + move every slot by 12 MIDI notes.\n"
+                "- Default: slot 1 is MIDI 60 (C3). Octave - -> 48 (C2), Octave + -> 72 (C4).\n"
+                "- Quantize waits for the next grid, or starts now if None.\n"
+                "- Highest held note wins. Other pitches are ignored.\n"
+                "- No gesture = dry. The ring keeps recording.\n"
+                "\n"
+                "Actions\n"
+                "- Each note has step curves over one 4/4 bar (Division, Reverse, pan, FX).\n"
+                "- Ping-Pong reads that bar forward, then backward (8 beats), then repeats.\n"
+                "- FX chain while a gesture is active: filter -> lo-fi -> delay -> reverb.\n"
+                "\n"
+                "A short click selects the action to edit. Hold the click to play that slot.",
+                false);
+            addAndMakeVisible (body);
+
+            closeButton.setButtonText ("Close");
+            closeButton.setColour (juce::TextButton::buttonColourId, UiColours::accent);
+            closeButton.setColour (juce::TextButton::textColourOffId, UiColours::background);
+            closeButton.onClick = [this] { close(); };
+            addAndMakeVisible (closeButton);
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (juce::Colours::black.withAlpha (0.55f));
+
+            auto panel = panelBounds().toFloat();
+            g.setColour (UiColours::panel);
+            g.fillRoundedRectangle (panel, 8.0f);
+            g.setColour (UiColours::accent.withAlpha (0.45f));
+            g.drawRoundedRectangle (panel, 8.0f, 1.5f);
+        }
+
+        void resized() override
+        {
+            auto panel = panelBounds().reduced (16);
+            title.setBounds (panel.removeFromTop (24));
+            panel.removeFromTop (10);
+            closeButton.setBounds (panel.removeFromBottom (28).removeFromRight (90));
+            panel.removeFromBottom (10);
+            body.setBounds (panel);
+        }
+
+        void mouseDown (const juce::MouseEvent& event) override
+        {
+            if (! panelBounds().contains (event.getPosition()))
+                close();
+        }
+
+        bool keyPressed (const juce::KeyPress& key) override
+        {
+            if (key == juce::KeyPress::escapeKey)
+            {
+                close();
+                return true;
+            }
+
+            return false;
+        }
+
+    private:
+        juce::Rectangle<int> panelBounds() const
+        {
+            return getLocalBounds().withSizeKeepingCentre (520, 420);
+        }
+
+        void close()
+        {
+            if (onClose)
+                onClose();
+        }
+
+        juce::Label title;
+        juce::TextEditor body;
+        juce::TextButton closeButton;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HelpOverlay)
+    };
+
     constexpr int kEditorWidth = 920;
     constexpr int kCollapsedHeight = 230;
     constexpr int kMinWidth = 760;
@@ -157,6 +274,10 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
     versionLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.45f));
     versionLabel.setFont (juce::Font { juce::FontOptions { 13.0f } });
     addAndMakeVisible (versionLabel);
+
+    styleButton (helpButton);
+    helpButton.setTooltip ("How it works");
+    helpButton.onClick = [this] { promptHelp(); };
 
     gestureValueLabel.setJustificationType (juce::Justification::centred);
     gestureValueLabel.setColour (juce::Label::textColourId, UiColours::accent);
@@ -229,10 +350,23 @@ StutterCloneAudioProcessorEditor::StutterCloneAudioProcessorEditor (StutterClone
     {
         selectGesture (index);
     };
+    keyboard->onNoteHeld = [this] (int index, bool held)
+    {
+        processorRef.setUiGestureHeld (index, held);
+    };
     addAndMakeVisible (*keyboard);
+
+    styleButton (octaveDownButton);
+    octaveDownButton.setTooltip ("Move slots down one octave");
+    octaveDownButton.onClick = [this] { applyOctaveOffset (-1); };
+    styleButton (octaveUpButton);
+    octaveUpButton.setTooltip ("Move slots up one octave");
+    octaveUpButton.onClick = [this] { applyOctaveOffset (1); };
 
     actionEditor = std::make_unique<ActionEditor> (processorRef);
     addAndMakeVisible (*actionEditor);
+
+    syncOctaveControls();
 
     refreshPresetList();
     lastExpandedHeight = preferredExpandedHeight();
@@ -385,6 +519,7 @@ void StutterCloneAudioProcessorEditor::layoutSaveAsOverlay()
 
 void StutterCloneAudioProcessorEditor::promptSaveAs()
 {
+    dismissHelpOverlay();
     auto overlay = std::make_unique<SavePresetOverlay>();
     overlay->setNameText (processorRef.getWorkingPreset().isFactory
                               ? "My Preset"
@@ -405,12 +540,66 @@ void StutterCloneAudioProcessorEditor::promptSaveAs()
         overlayComponent->focusNameEditor();
 }
 
+void StutterCloneAudioProcessorEditor::promptHelp()
+{
+    dismissSaveAsOverlay();
+
+    auto overlay = std::make_unique<HelpOverlay>();
+    overlay->onClose = [this] { dismissHelpOverlay(); };
+
+    addAndMakeVisible (*overlay);
+    overlay->toFront (true);
+    helpOverlay = std::move (overlay);
+    layoutHelpOverlay();
+    helpOverlay->grabKeyboardFocus();
+}
+
+void StutterCloneAudioProcessorEditor::dismissHelpOverlay()
+{
+    helpOverlay.reset();
+}
+
+void StutterCloneAudioProcessorEditor::layoutHelpOverlay()
+{
+    if (helpOverlay != nullptr)
+        helpOverlay->setBounds (getLocalBounds());
+}
+
+void StutterCloneAudioProcessorEditor::applyOctaveOffset (int delta)
+{
+    processorRef.setFirstGestureNote (processorRef.getFirstGestureNote() + delta * 12);
+    syncOctaveControls();
+    updateStatusDisplay();
+}
+
+void StutterCloneAudioProcessorEditor::syncOctaveControls()
+{
+    const int first = processorRef.getFirstGestureNote();
+
+    if (keyboard != nullptr)
+        keyboard->setFirstGestureNote (first);
+
+    octaveDownButton.setEnabled (first > stutter::minFirstGestureNote);
+    octaveUpButton.setEnabled (first < stutter::maxFirstGestureNote);
+}
+
+juce::String StutterCloneAudioProcessorEditor::gestureRangeText() const
+{
+    const int first = processorRef.getFirstGestureNote();
+    const int last = stutter::lastGestureNoteFor (first);
+    const auto firstName = juce::MidiMessage::getMidiNoteName (first, true, true, stutter::noteNameMiddleCOctave);
+    const auto lastName = juce::MidiMessage::getMidiNoteName (last, true, true, stutter::noteNameMiddleCOctave);
+    return firstName + "-" + lastName;
+}
+
 void StutterCloneAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     refreshPresetList();
 
     if (actionEditor != nullptr)
         actionEditor->setGestureIndex (actionEditor->getGestureIndex());
+
+    syncOctaveControls();
 }
 
 void StutterCloneAudioProcessorEditor::paint (juce::Graphics& g)
@@ -433,6 +622,8 @@ void StutterCloneAudioProcessorEditor::resized()
     titleRow.removeFromRight (10);
     titleLabel.setBounds (titleRow.removeFromLeft (140));
     versionLabel.setBounds (titleRow.removeFromLeft (40));
+    titleRow.removeFromLeft (6);
+    helpButton.setBounds (titleRow.removeFromLeft (26));
     titleRow.removeFromLeft (8);
     gestureValueLabel.setBounds (titleRow);
 
@@ -461,10 +652,14 @@ void StutterCloneAudioProcessorEditor::resized()
 
     bounds.removeFromTop (8);
 
+    auto keyboardRow = bounds.removeFromTop (56);
+    octaveDownButton.setBounds (keyboardRow.removeFromLeft (28));
+    keyboardRow.removeFromLeft (4);
+    octaveUpButton.setBounds (keyboardRow.removeFromRight (28));
+    keyboardRow.removeFromRight (4);
+
     if (keyboard != nullptr)
-        keyboard->setBounds (bounds.removeFromTop (56));
-    else
-        bounds.removeFromTop (56);
+        keyboard->setBounds (keyboardRow);
 
     if (editorExpanded)
     {
@@ -481,6 +676,7 @@ void StutterCloneAudioProcessorEditor::resized()
     }
 
     layoutSaveAsOverlay();
+    layoutHelpOverlay();
 }
 
 void StutterCloneAudioProcessorEditor::timerCallback()
@@ -515,7 +711,7 @@ void StutterCloneAudioProcessorEditor::updateStatusDisplay()
 
     if (note >= 0)
     {
-        const auto noteName = juce::MidiMessage::getMidiNoteName (note, true, true, 3);
+        const auto noteName = juce::MidiMessage::getMidiNoteName (note, true, true, stutter::noteNameMiddleCOctave);
         auto text = noteName + "  |  " + stutter::divisionNames[juce::jlimit (0, stutter::numDivisions - 1, division)];
 
         if (active)
@@ -529,7 +725,7 @@ void StutterCloneAudioProcessorEditor::updateStatusDisplay()
     }
     else
     {
-        gestureValueLabel.setText ("C3-B3  |  hold a note", juce::dontSendNotification);
+        gestureValueLabel.setText (gestureRangeText() + "  |  hold a note", juce::dontSendNotification);
         gestureValueLabel.setColour (juce::Label::textColourId, UiColours::text.withAlpha (0.7f));
     }
 }

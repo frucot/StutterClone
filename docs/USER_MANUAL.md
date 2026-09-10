@@ -1,6 +1,6 @@
 # StutterClone user manual
 
-Version **0.0.5-beta**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
+Version **0.0.5**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
 
 StutterClone is an **audio effect** triggered by **MIDI**. It is not a synthesizer: it processes the sound that already lives on the track, and a MIDI note from **C3 to B3** decides *when* to stutter and *how*.
 
@@ -18,7 +18,7 @@ Incoming audio is always recorded into a short ring buffer (about four seconds).
 
 Notes outside C3–B3 are ignored. If several gesture notes are held at once, **the highest note wins**.
 
-The on-screen keyboard **selects which action you edit**. It does not trigger playback. Playback only starts from MIDI arriving at the plugin (a controller, a MIDI clip, or the standalone MIDI input).
+The on-screen keyboard **selects which action you edit** (cyan) and **plays that slot while you hold the click** (orange). MIDI from a controller, clip, or the standalone input also plays the same slots.
 
 ## Install
 
@@ -94,7 +94,8 @@ The plugin opens **expanded**. **Editor** (top right) collapses the curve panel 
 | Control | Meaning |
 | --- | --- |
 | Title / version | Plugin name and display version |
-| Gesture line | Playing or pending note, current division, and step (for example `C3 \| 1/16 \| step 3`). Idle: `C3-B3 \| hold a note` |
+| ? | Short overlay: routing, gestures, and how actions work |
+| Gesture line | Playing or pending note, current division, and step (for example `C3 \| 1/16 \| step 3`). Idle: `C3-B3 \| hold a note` (range follows Octave - / +) |
 | BPM badge | Tempo reported by the host |
 | MIDI badge | `Inactive` (red) / `Pending` (yellow, waiting for Quantize) / `Active` (cyan) |
 
@@ -122,10 +123,12 @@ The DAW session also stores the working preset with the plugin state, so a proje
 
 The waveform is the capture ring: live input while idle, the looping slice while a gesture is active (write head in yellow).
 
-The C3–B3 keyboard:
+The twelve-key keyboard (default C3–B3 = MIDI 60–71). **Octave - / +** move the whole window by 12 MIDI notes:
 
-- Click a key to **edit** that note's action (and expand the editor if it was collapsed).
-- Keys light up when that MIDI note is actually held.
+- Click a key to **edit** that slot's action (cyan) and expand the editor if it was collapsed.
+- **Hold the click** to play the slot; an orange overlay shows the note that is sounding.
+- Keys also light orange when the matching MIDI note is held.
+- Octave - maps slot 1 to MIDI 48 (C2); Octave + maps it to MIDI 72 (C4). The twelve actions stay in the same slots.
 
 ### Factory Classic (default divisions)
 
@@ -141,21 +144,22 @@ Until you draw curves, **Classic** only changes **Division** per note. Other mod
 | G#3 | 1/8T |
 | A3 | 1/16T |
 | A#3 | 1/32T |
-| B3 | 1/8S |
+| B3 | 1/1 |
 
-T = triplet, S = sextuplet.
+T = triplet. Older presets that used sextuplets (`S`) load as the matching triplet.
 
 ## Action editor
 
 Each note has its own action. Click the keyboard (or play a note, then click the key) to edit it. A red playhead runs across the lanes while that note is the active gesture.
 
-Curves cover **one bar** (four beats in 4/4), then wrap for as long as you hold the note. Horizontal position is time; the number of columns is **Grid**.
+Curves cover **one bar** (four beats in 4/4). In the default mode they wrap for as long as you hold the note. With **Ping-Pong** they play forward, then backward (eight beats), then repeat. Horizontal position is time; the number of columns is **Grid**.
 
 ### Toolbar
 
 | Control | Meaning |
 | --- | --- |
 | Grid | `4`, `8`, `16`, or `32` steps across the bar. Changing grid resamples the existing curves |
+| Ping-Pong | Off (default): wrap to the start of the bar. On: read the bar forward then backward (8 beats) |
 | Unfreeze Loop | Off (default): keep the slice captured at gesture start. On: recapture from the ring every **Loop** period |
 | Loop | Recapture period when Unfreeze is on: `1 Beat`, `2 Beats`, `3 Beats`, `1 Bar`, `2 Bars` |
 | Delay Cut | On note release, clear the delay so tails do not continue |
@@ -173,7 +177,7 @@ Without the Cut options, delay and reverb can ring out during the short fade bac
 
 | Lane | Role |
 | --- | --- |
-| Division | Loop length in beats: `1/4` … `1/64`, plus triplets (`T`) and sextuplets (`S`). The lane is ordered by duration: longest at the bottom, shortest at the top |
+| Division | Loop length in beats: `1/1`, `1/2`, `1/4` … `1/64`, plus triplets (`T`). The lane is ordered by duration: longest at the bottom, shortest at the top |
 | Reverse | Play the slice backwards |
 | Alt Pan | Alternate the stutter between left and right (the switch is smoothed to avoid clicks) |
 
@@ -228,7 +232,7 @@ The FX chain is **filter → lo-fi → delay → reverb**, and it runs only whil
 
 | Symptom | What to check |
 | --- | --- |
-| No stutter, header stays Inactive | MIDI is not reaching the plugin, or notes are not C3–B3 |
+| No stutter, header stays Inactive | MIDI is not reaching the plugin, or notes are outside the current Octave window |
 | Pending forever | Transport may be stopped, or Quantize never reaches the next grid. Try `None` |
 | Stutter is dry / no FX | Filter On, Lo-Fi On, Delay On, Reverb On are off on those steps |
 | Delay or reverb hangs after release | Enable Delay Cut / Reverb Cut on that action |

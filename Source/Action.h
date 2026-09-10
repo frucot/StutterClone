@@ -10,31 +10,59 @@ namespace stutter
 {
     constexpr int maxSteps = 32;
     constexpr int numGestureNotes = 12;
-    constexpr int firstGestureNote = 60; // C3 (middle C = C3)
-    constexpr int lastGestureNote = firstGestureNote + numGestureNotes - 1; // B3
-    constexpr int numDivisions = 11;
+    constexpr int defaultFirstGestureNote = 60; // slot 0 = MIDI 60 (C3)
+    constexpr int minFirstGestureNote = 0;
+    constexpr int maxFirstGestureNote = 127 - numGestureNotes + 1; // 116
+    constexpr int noteNameMiddleCOctave = 3; // Ableton: MIDI 60 = C3
+    constexpr int numDivisions = 12;
+    constexpr int legacyNumDivisions = 11;
+    constexpr int currentDivTable = 2;
     constexpr int numQuantizeChoices = 5;
     constexpr double measureBeats = 4.0;
 
+    constexpr int div1Bar = 0;
+    constexpr int div1_2 = 1;
+    constexpr int div1_4 = 2;
+    constexpr int div1_8 = 3;
+    constexpr int div1_16 = 4;
+    constexpr int div1_32 = 5;
+    constexpr int div1_64 = 6;
+    constexpr int div1BarT = 7;
+    constexpr int div1_2T = 8;
+    constexpr int div1_8T = 9;
+    constexpr int div1_16T = 10;
+    constexpr int div1_32T = 11;
+
     constexpr const char* divisionNames[numDivisions] {
-        "1/4", "1/8", "1/16", "1/32", "1/64",
-        "1/8T", "1/16T", "1/32T",
-        "1/8S", "1/16S", "1/32S"
+        "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64",
+        "1/1T", "1/2T", "1/8T", "1/16T", "1/32T"
     };
 
     constexpr double beatsPerDivision[numDivisions] {
-        1.0,        // 1/4
-        0.5,        // 1/8
-        0.25,       // 1/16
-        0.125,      // 1/32
-        0.0625,     // 1/64
-        1.0 / 3.0,  // 1/8T
-        1.0 / 6.0,  // 1/16T
-        1.0 / 12.0, // 1/32T
-        1.0 / 3.0,  // 1/8S
-        1.0 / 6.0,  // 1/16S
-        1.0 / 12.0  // 1/32S
+        4.0,            // 1/1
+        2.0,            // 1/2
+        1.0,            // 1/4
+        0.5,            // 1/8
+        0.25,           // 1/16
+        0.125,          // 1/32
+        0.0625,         // 1/64
+        8.0 / 3.0,      // 1/1T
+        4.0 / 3.0,      // 1/2T
+        1.0 / 3.0,      // 1/8T
+        1.0 / 6.0,      // 1/16T
+        1.0 / 12.0      // 1/32T
     };
+
+    // Old 11-slot table (with sextuplets) -> current indices. S maps to the matching T.
+    constexpr int legacyDivisionToCurrent[legacyNumDivisions] {
+        div1_4, div1_8, div1_16, div1_32, div1_64,
+        div1_8T, div1_16T, div1_32T,
+        div1_8T, div1_16T, div1_32T
+    };
+
+    static_assert (legacyDivisionToCurrent[0] == div1_4);
+    static_assert (legacyDivisionToCurrent[8] == div1_8T);
+    static_assert (numDivisions == 12);
 
     constexpr const char* quantizeNames[numQuantizeChoices] {
         "1/4", "1/8", "1/16", "1/32", "None"
@@ -85,19 +113,57 @@ namespace stutter
 
     constexpr int numCurves = static_cast<int> (Curve::Count);
 
-    inline bool isGestureNote (int midiNote) noexcept
+    struct LaneGroup
     {
-        return midiNote >= firstGestureNote && midiNote <= lastGestureNote;
+        const char* title;
+        int start;
+        int count;
+    };
+
+    constexpr int numLaneGroups = 5;
+    constexpr int leftColumnGroups = 3;
+    constexpr int filterGroupIndex = 1;
+    constexpr int delayGroupIndex = 3;
+
+    constexpr LaneGroup laneGroups[numLaneGroups] {
+        { "Stutter", 0,  3 },
+        { "Filter",  3,  3 },
+        { "Lo-Fi",   6,  3 },
+        { "Delay",   9,  3 },
+        { "Reverb",  12, 4 }
+    };
+
+    inline int clampFirstGestureNote (int firstNote) noexcept
+    {
+        int first = juce::jlimit (minFirstGestureNote, maxFirstGestureNote, firstNote);
+        first -= first % 12; // keep C (MIDI 60 = C)
+        return juce::jlimit (minFirstGestureNote, maxFirstGestureNote, first);
     }
 
-    inline int gestureIndexForNote (int midiNote) noexcept
+    inline int lastGestureNoteFor (int firstNote) noexcept
     {
-        return midiNote - firstGestureNote;
+        return clampFirstGestureNote (firstNote) + numGestureNotes - 1;
     }
 
-    inline int noteForGestureIndex (int index) noexcept
+    inline bool isGestureNote (int midiNote, int firstNote) noexcept
     {
-        return firstGestureNote + index;
+        const int first = clampFirstGestureNote (firstNote);
+        return midiNote >= first && midiNote <= lastGestureNoteFor (first);
+    }
+
+    inline bool isCanonicalSlotNote (int midiNote) noexcept
+    {
+        return isGestureNote (midiNote, defaultFirstGestureNote);
+    }
+
+    inline int gestureIndexForNote (int midiNote, int firstNote) noexcept
+    {
+        return midiNote - clampFirstGestureNote (firstNote);
+    }
+
+    inline int noteForGestureIndex (int index, int firstNote) noexcept
+    {
+        return clampFirstGestureNote (firstNote) + index;
     }
 
     inline int clampGridResolution (int value) noexcept
@@ -135,19 +201,20 @@ namespace stutter
              / static_cast<float> (numDivisions - 1);
     }
 
-    // Bottom → top in the editor: longest loop to shortest (straight, then T, then S).
+    // Bottom → top in the editor: longest loop to shortest.
     constexpr int divisionByDuration[numDivisions] {
-        0,  // 1/4
-        1,  // 1/8
-        5,  // 1/8T
-        8,  // 1/8S
-        2,  // 1/16
-        6,  // 1/16T
-        9,  // 1/16S
-        3,  // 1/32
-        7,  // 1/32T
-        10, // 1/32S
-        4   // 1/64
+        div1Bar,   // 1/1
+        div1BarT,  // 1/1T
+        div1_2,    // 1/2
+        div1_2T,   // 1/2T
+        div1_4,    // 1/4
+        div1_8,    // 1/8
+        div1_8T,   // 1/8T
+        div1_16,   // 1/16
+        div1_16T,  // 1/16T
+        div1_32,   // 1/32
+        div1_32T,  // 1/32T
+        div1_64    // 1/64
     };
 
     inline int durationRankForDivision (int index) noexcept
@@ -172,6 +239,46 @@ namespace stutter
     {
         return static_cast<float> (durationRankForDivision (index))
              / static_cast<float> (numDivisions - 1);
+    }
+
+    inline float remapLegacyDivisionNorm (float norm) noexcept
+    {
+        const int oldIndex = juce::jlimit (0, legacyNumDivisions - 1,
+                                           juce::roundToInt (norm * static_cast<float> (legacyNumDivisions - 1)));
+        return divisionToNorm (legacyDivisionToCurrent[oldIndex]);
+    }
+
+    inline double wrapCycle (double beat, double cycle) noexcept
+    {
+        if (! std::isfinite (beat) || cycle <= 0.0)
+            return 0.0;
+
+        beat = std::fmod (beat, cycle);
+
+        if (beat < 0.0)
+            beat += cycle;
+
+        return beat;
+    }
+
+    inline double wrapLinearGestureBeat (double beat) noexcept
+    {
+        return wrapCycle (beat, measureBeats * 2.0);
+    }
+
+    inline double pingPongMeasureBeat (double linearBeat) noexcept
+    {
+        const double cycle = wrapLinearGestureBeat (linearBeat);
+
+        if (cycle < measureBeats)
+            return cycle;
+
+        double reversed = 2.0 * measureBeats - cycle;
+
+        if (reversed >= measureBeats)
+            reversed = measureBeats * (1.0 - 1.0e-12);
+
+        return reversed;
     }
 
     inline bool gateFromNorm (float norm) noexcept
@@ -220,8 +327,33 @@ namespace stutter
         int reverbCut = 0;
         int loopUnfreeze = 0;    // 0 keeps the capture from the gesture start
         int loopPeriod = 3;      // 0=1 beat .. 4=2 bars
+        int pingPong = 0;        // 0 wrap 4 beats, 1 forward then reverse (8-beat cycle)
         float curves[numCurves][maxSteps] {};
     };
+
+    inline double measureBeatForAction (const Action& action, double linearBeat) noexcept
+    {
+        if (action.pingPong != 0)
+            return pingPongMeasureBeat (linearBeat);
+
+        return wrapCycle (linearBeat, measureBeats);
+    }
+
+    inline void migrateDivisionCurveIfNeeded (Action& action, int divTable) noexcept
+    {
+        if (divTable >= currentDivTable)
+            return;
+
+        auto* steps = action.curves[static_cast<int> (Curve::Division)];
+        const int n = clampGridResolution (action.gridResolution);
+
+        for (int i = 0; i < n; ++i)
+            steps[i] = remapLegacyDivisionNorm (steps[i]);
+
+        if (n > 0)
+            for (int i = n; i < maxSteps; ++i)
+                steps[i] = steps[n - 1];
+    }
 
     inline void fillCurve (Action& action, Curve curve, float value) noexcept
     {
@@ -239,8 +371,9 @@ namespace stutter
         action.reverbCut = 0;
         action.loopUnfreeze = 0;
         action.loopPeriod = 3;
+        action.pingPong = 0;
 
-        fillCurve (action, Curve::Division, divisionToNorm (2)); // 1/16
+        fillCurve (action, Curve::Division, divisionToNorm (div1_16));
         fillCurve (action, Curve::Reverse, 0.0f);
         fillCurve (action, Curve::AltPan, 0.0f);
         fillCurve (action, Curve::FilterOn, 0.0f);
@@ -291,15 +424,15 @@ namespace stutter
     {
         switch (juce::jlimit (0, numGestureNotes - 1, gestureIndex))
         {
-            case 0:  case 1:  return 1; // C3 / C#3 → 1/8
-            case 2:  case 3:  return 2; // D3 / D#3 → 1/16
-            case 4:           return 3; // E3       → 1/32
-            case 5:  case 6:  return 4; // F3 / F#3 → 1/64
-            case 7:           return 0; // G3       → 1/4
-            case 8:           return 5; // G#3      → 1/8T
-            case 9:           return 6; // A3       → 1/16T
-            case 10:          return 7; // A#3      → 1/32T
-            default:          return 8; // B3       → 1/8S
+            case 0:  case 1:  return div1_8;   // C  / C# → 1/8
+            case 2:  case 3:  return div1_16;  // D  / D# → 1/16
+            case 4:           return div1_32;  // E       → 1/32
+            case 5:  case 6:  return div1_64;  // F  / F# → 1/64
+            case 7:           return div1_4;   // G       → 1/4
+            case 8:           return div1_8T;  // G#      → 1/8T
+            case 9:           return div1_16T; // A       → 1/16T
+            case 10:          return div1_32T; // A#      → 1/32T
+            default:          return div1Bar;  // B       → 1/1
         }
     }
 
@@ -313,7 +446,7 @@ namespace stutter
 
     struct EvaluatedStep
     {
-        int divisionIndex = 2;
+        int divisionIndex = div1_16;
         bool reverse = false;
         bool altPan = false;
         bool filterOn = false;

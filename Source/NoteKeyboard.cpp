@@ -3,6 +3,11 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+NoteKeyboard::~NoteKeyboard()
+{
+    endHold();
+}
+
 void NoteKeyboard::setSelectedIndex (int index)
 {
     selectedIndex = juce::jlimit (0, stutter::numGestureNotes - 1, index);
@@ -15,6 +20,17 @@ void NoteKeyboard::setHeldMask (uint16_t mask)
         return;
 
     heldMask = mask;
+    repaint();
+}
+
+void NoteKeyboard::setFirstGestureNote (int midiNote)
+{
+    const int clamped = stutter::clampFirstGestureNote (midiNote);
+
+    if (clamped == firstGestureNote)
+        return;
+
+    firstGestureNote = clamped;
     repaint();
 }
 
@@ -75,8 +91,10 @@ void NoteKeyboard::paint (juce::Graphics& g)
 
         if (held)
         {
-            g.setColour (UiColours::accent.withAlpha (0.45f));
-            g.fillRect (bounds.getX(), bounds.getBottom() - 6.0f, bounds.getWidth(), 6.0f);
+            g.setColour (UiColours::keyHeld.withAlpha (selected ? 0.42f : 0.55f));
+            g.fillRoundedRectangle (bounds.reduced (0.5f), 3.0f);
+            g.setColour (UiColours::keyHeld);
+            g.fillRect (bounds.getX() + 1.0f, bounds.getBottom() - 12.0f, bounds.getWidth() - 2.0f, 11.0f);
         }
 
         g.setColour (UiColours::grid);
@@ -84,7 +102,8 @@ void NoteKeyboard::paint (juce::Graphics& g)
 
         g.setColour (selected ? UiColours::background : UiColours::text.withAlpha (0.7f));
         g.setFont (juce::Font { juce::FontOptions { 11.0f, juce::Font::bold } });
-        const auto name = juce::MidiMessage::getMidiNoteName (stutter::noteForGestureIndex (note), true, true, 3);
+        const auto name = juce::MidiMessage::getMidiNoteName (stutter::noteForGestureIndex (note, firstGestureNote),
+                                                            true, true, stutter::noteNameMiddleCOctave);
         g.drawText (name, bounds.removeFromBottom (18.0f), juce::Justification::centred);
     }
 
@@ -99,13 +118,38 @@ void NoteKeyboard::paint (juce::Graphics& g)
 
         if (held)
         {
-            g.setColour (UiColours::accent);
-            g.fillEllipse (bounds.getCentreX() - 3.0f, bounds.getBottom() - 10.0f, 6.0f, 6.0f);
+            g.setColour (UiColours::keyHeld.withAlpha (selected ? 0.55f : 0.8f));
+            g.fillRoundedRectangle (bounds.reduced (1.0f), 3.0f);
+            g.setColour (UiColours::keyHeld);
+            g.fillRect (bounds.getX() + 2.0f, bounds.getBottom() - 10.0f, bounds.getWidth() - 4.0f, 8.0f);
         }
 
         g.setColour (UiColours::accent.withAlpha (0.35f));
         g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
     }
+}
+
+void NoteKeyboard::beginHold (int gestureIndex)
+{
+    if (pressedIndex == gestureIndex)
+        return;
+
+    endHold();
+    pressedIndex = juce::jlimit (0, stutter::numGestureNotes - 1, gestureIndex);
+
+    if (onNoteHeld)
+        onNoteHeld (pressedIndex, true);
+}
+
+void NoteKeyboard::endHold()
+{
+    if (pressedIndex < 0)
+        return;
+
+    if (onNoteHeld)
+        onNoteHeld (pressedIndex, false);
+
+    pressedIndex = -1;
 }
 
 void NoteKeyboard::mouseDown (const juce::MouseEvent& event)
@@ -119,4 +163,29 @@ void NoteKeyboard::mouseDown (const juce::MouseEvent& event)
 
     if (onNoteClicked)
         onNoteClicked (note);
+
+    beginHold (note);
+}
+
+void NoteKeyboard::mouseDrag (const juce::MouseEvent& event)
+{
+    const int note = hitTestKey (event.getPosition());
+
+    if (note < 0)
+        return;
+
+    if (note != selectedIndex)
+    {
+        setSelectedIndex (note);
+
+        if (onNoteClicked)
+            onNoteClicked (note);
+    }
+
+    beginHold (note);
+}
+
+void NoteKeyboard::mouseUp (const juce::MouseEvent&)
+{
+    endHold();
 }

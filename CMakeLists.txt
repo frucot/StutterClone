@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Display version may carry a pre-release suffix; CMake/JUCE VERSION stays numeric.
-set(STUTTERCLONE_VERSION_STRING "0.0.5-beta")
+set(STUTTERCLONE_VERSION_STRING "0.0.5")
 
 project(StutterClone
     VERSION 0.0.5

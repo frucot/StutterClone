@@ -40,8 +40,16 @@ public:
     void resetReverb() noexcept;
     void process (juce::AudioBuffer<float>& buffer, int startSample, int numSamples, const Settings& settings) noexcept;
 
+    // Ordered FX stages: filter -> lo-fi -> delay -> reverb.
+    // To add a module: Settings fields, a process* stage here, Curve + EvaluatedStep,
+    // XML id in PresetBank, and a row in stutter::laneGroups.
+
 private:
     void processScratchSample (int numChannels, float* frame, const Settings& settings) noexcept;
+    void processFilter (int numChannels, float* frame, const Settings& settings) noexcept;
+    void processLoFi (int numChannels, float* frame, const Settings& settings) noexcept;
+    void processDelay (int numChannels, float* frame, const Settings& settings) noexcept;
+    void processReverb (int numChannels, int numSamples, const Settings& settings) noexcept;
 
     juce::dsp::StateVariableTPTFilter<float> filter;
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayLine;

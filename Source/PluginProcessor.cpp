@@ -25,22 +25,6 @@ namespace
 
         return juce::jlimit (0, size - 1, index);
     }
-
-    double wrapGestureBeat (double beat) noexcept
-    {
-        if (! std::isfinite (beat))
-            return 0.0;
-
-        if (beat >= stutter::measureBeats || beat < 0.0)
-        {
-            beat = std::fmod (beat, stutter::measureBeats);
-
-            if (beat < 0.0)
-                beat += stutter::measureBeats;
-        }
-
-        return beat;
-    }
 }
 
 StutterCloneAudioProcessor::StutterCloneAudioProcessor()
@@ -126,6 +110,7 @@ void StutterCloneAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     gestureNote.store (-1, std::memory_order_relaxed);
     activeStep.store (0, std::memory_order_relaxed);
     gestureBeatAtomic.store (0.0f, std::memory_order_relaxed);
+    audioFirstGestureNote = currentFirstGestureNote();
 }
 
 void StutterCloneAudioProcessor::releaseResources()
@@ -174,6 +159,8 @@ void StutterCloneAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         buffer.clear (channel, 0, buffer.getNumSamples());
 
     capturePlayHead();
+    applyGestureOctaveIfChanged();
+    applyHeldMask();
 
     int samplePos = 0;
     const int numSamples = buffer.getNumSamples();
@@ -244,6 +231,29 @@ void StutterCloneAudioProcessor::capturePlayHead() noexcept
     }
 }
 
+int StutterCloneAudioProcessor::currentFirstGestureNote() const noexcept
+{
+    return stutter::clampFirstGestureNote (firstGestureNote.load (std::memory_order_relaxed));
+}
+
+void StutterCloneAudioProcessor::applyGestureOctaveIfChanged() noexcept
+{
+    const int first = currentFirstGestureNote();
+
+    if (first == audioFirstGestureNote)
+        return;
+
+    audioFirstGestureNote = first;
+    resetHeldNotes();
+    cancelPending();
+
+    if (stutterIsOn)
+        stopStutter();
+
+    stutterActive.store (stutterIsOn, std::memory_order_relaxed);
+    gestureNote.store (-1, std::memory_order_relaxed);
+}
+
 int StutterCloneAudioProcessor::currentQuantizeIndex() const noexcept
 {
     if (quantizeParam == nullptr)
@@ -256,8 +266,9 @@ int StutterCloneAudioProcessor::currentQuantizeIndex() const noexcept
 const stutter::Action& StutterCloneAudioProcessor::rtActionForNote (int midiNote) const noexcept
 {
     const int dest = juce::jlimit (0, 1, rtActionIndex.load (std::memory_order_acquire));
+    const int first = currentFirstGestureNote();
     const int index = juce::jlimit (0, stutter::numGestureNotes - 1,
-                                    stutter::gestureIndexForNote (midiNote));
+                                    stutter::gestureIndexForNote (midiNote, first));
     return rtActions[static_cast<size_t> (dest)][static_cast<size_t> (index)];
 }
 
@@ -298,39 +309,73 @@ void StutterCloneAudioProcessor::handleMidiEvent (const juce::uint8* data, int n
     const bool isNoteOn = status == 0x90;
     const bool isNoteOff = status == 0x80 || (isNoteOn && velocity == 0);
 
-    if (! stutter::isGestureNote (note))
+    if (! stutter::isGestureNote (note, currentFirstGestureNote()))
         return;
 
-    const int gestureIndex = stutter::gestureIndexForNote (note);
+    const int gestureIndex = stutter::gestureIndexForNote (note, currentFirstGestureNote());
     const auto bit = static_cast<uint16_t> (1u << gestureIndex);
-    uint16_t mask = heldGestureMask.load (std::memory_order_relaxed);
+    uint16_t mask = midiHeldGestureMask.load (std::memory_order_relaxed);
 
     if (isNoteOn && velocity > 0)
-    {
         mask = static_cast<uint16_t> (mask | bit);
-        heldGestureMask.store (mask, std::memory_order_relaxed);
+    else if (isNoteOff)
+        mask = static_cast<uint16_t> (mask & static_cast<uint16_t> (~bit));
+    else
+        return;
 
+    midiHeldGestureMask.store (mask, std::memory_order_relaxed);
+    applyHeldMask();
+}
+
+void StutterCloneAudioProcessor::setUiGestureHeld (int gestureIndex, bool held) noexcept
+{
+    const int index = juce::jlimit (0, stutter::numGestureNotes - 1, gestureIndex);
+    const auto bit = static_cast<uint16_t> (1u << index);
+    uint16_t mask = uiHeldGestureMask.load (std::memory_order_relaxed);
+
+    for (;;)
+    {
+        const uint16_t next = held ? static_cast<uint16_t> (mask | bit)
+                                   : static_cast<uint16_t> (mask & static_cast<uint16_t> (~bit));
+
+        if (next == mask)
+            return;
+
+        if (uiHeldGestureMask.compare_exchange_weak (mask, next, std::memory_order_relaxed))
+            return;
+    }
+}
+
+void StutterCloneAudioProcessor::applyHeldMask() noexcept
+{
+    const uint16_t now = static_cast<uint16_t> (midiHeldGestureMask.load (std::memory_order_relaxed)
+                                             | uiHeldGestureMask.load (std::memory_order_relaxed));
+    const uint16_t prev = lastCombinedHeldMask;
+
+    if (now == prev)
+        return;
+
+    const uint16_t added = static_cast<uint16_t> (now & ~prev);
+    const uint16_t removed = static_cast<uint16_t> (prev & ~now);
+    lastCombinedHeldMask = now;
+    heldGestureMask.store (now, std::memory_order_relaxed);
+
+    if (added != 0)
+    {
         const int highest = findHighestHeldGestureNote();
 
-        if (stutterIsOn)
+        if (highest >= 0)
         {
-            if (highest >= 0)
+            if (stutterIsOn)
                 startStutter (highest);
+            else
+                armPending (highest);
         }
-        else
-        {
-            armPending (highest >= 0 ? highest : note);
-        }
-
-        return;
     }
 
-    if (isNoteOff)
+    if (removed != 0)
     {
-        mask = static_cast<uint16_t> (mask & static_cast<uint16_t> (~bit));
-        heldGestureMask.store (mask, std::memory_order_relaxed);
-
-        if (mask == 0)
+        if (now == 0)
         {
             cancelPending();
             stopStutter();
@@ -440,7 +485,8 @@ void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buf
                     --fadeInRemaining;
                 }
 
-                gestureBeat = wrapGestureBeat (gestureBeat + beatsPerSample);
+                gestureBeat = stutter::wrapLinearGestureBeat (gestureBeat + beatsPerSample);
+                const double readBeat = stutter::measureBeatForAction (playingAction, gestureBeat);
 
                 if (playingAction.loopUnfreeze != 0)
                 {
@@ -455,8 +501,8 @@ void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buf
                     }
                 }
 
-                const auto step = stutter::evaluateAction (playingAction, gestureBeat);
-                const int stepIndex = stutter::stepIndexForBeat (gestureBeat, playingAction.gridResolution);
+                const auto step = stutter::evaluateAction (playingAction, readBeat);
+                const int stepIndex = stutter::stepIndexForBeat (readBeat, playingAction.gridResolution);
 
                 if (stepIndex != lastStepIndex)
                 {
@@ -466,7 +512,7 @@ void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buf
 
                 reversePlayback = step.reverse;
                 activeStep.store (stepIndex, std::memory_order_relaxed);
-                gestureBeatAtomic.store (static_cast<float> (gestureBeat), std::memory_order_relaxed);
+                gestureBeatAtomic.store (static_cast<float> (readBeat), std::memory_order_relaxed);
                 activeDivisionIndex.store (step.divisionIndex, std::memory_order_relaxed);
             }
             else if (fadeOutRemaining > 0)
@@ -486,7 +532,8 @@ void StutterCloneAudioProcessor::renderAudioSlice (juce::AudioBuffer<float>& buf
                 continue;
             }
 
-            const auto step = stutter::evaluateAction (playingAction, gestureBeat);
+            const auto step = stutter::evaluateAction (playingAction,
+                                                       stutter::measureBeatForAction (playingAction, gestureBeat));
             float targetL = 1.0f;
             float targetR = 1.0f;
 
@@ -542,7 +589,8 @@ void StutterCloneAudioProcessor::processFxSlice (juce::AudioBuffer<float>& buffe
                                                  int startSample,
                                                  int numSamples) noexcept
 {
-    const auto step = stutter::evaluateAction (playingAction, gestureBeat);
+    const auto step = stutter::evaluateAction (playingAction,
+                                               stutter::measureBeatForAction (playingAction, gestureBeat));
     const int delayDiv = juce::jlimit (0, 3, playingAction.delayDivision);
 
     GestureDspChain::Settings settings;
@@ -621,7 +669,7 @@ void StutterCloneAudioProcessor::writeToRingBuffer (const juce::AudioBuffer<floa
 
 void StutterCloneAudioProcessor::startStutter (int midiNote) noexcept
 {
-    if (! stutter::isGestureNote (midiNote))
+    if (! stutter::isGestureNote (midiNote, currentFirstGestureNote()))
         return;
 
     playingAction = rtActionForNote (midiNote);
@@ -725,7 +773,10 @@ void StutterCloneAudioProcessor::beginSeam (int continuationOffset, bool reverse
 
 void StutterCloneAudioProcessor::resetHeldNotes() noexcept
 {
+    midiHeldGestureMask.store (0, std::memory_order_relaxed);
+    uiHeldGestureMask.store (0, std::memory_order_relaxed);
     heldGestureMask.store (0, std::memory_order_relaxed);
+    lastCombinedHeldMask = 0;
 }
 
 int StutterCloneAudioProcessor::findHighestHeldGestureNote() const noexcept
@@ -734,14 +785,15 @@ int StutterCloneAudioProcessor::findHighestHeldGestureNote() const noexcept
 
     for (int i = stutter::numGestureNotes - 1; i >= 0; --i)
         if ((mask & static_cast<uint16_t> (1u << i)) != 0)
-            return stutter::noteForGestureIndex (i);
+            return stutter::noteForGestureIndex (i, currentFirstGestureNote());
 
     return -1;
 }
 
 int StutterCloneAudioProcessor::computeLoopLengthSamples() const noexcept
 {
-    const auto step = stutter::evaluateAction (playingAction, gestureBeat);
+    const auto step = stutter::evaluateAction (playingAction,
+                                               stutter::measureBeatForAction (playingAction, gestureBeat));
     const double beats = stutter::beatsPerDivision[static_cast<size_t> (step.divisionIndex)];
     const int samples = juce::roundToInt ((beats * 60.0 / clampedBpm) * currentSampleRate);
     return juce::jlimit (2, juce::jmax (2, ringBufferSize), samples);
@@ -988,11 +1040,23 @@ void StutterCloneAudioProcessor::getStateInformation (juce::MemoryBlock& destDat
     workingPreset.quantizeIndex = currentQuantizeIndex();
 
     juce::ValueTree root ("STUTTERCLONE");
+    root.setProperty ("firstGestureNote", getFirstGestureNote(), nullptr);
     root.appendChild (apvts.copyState(), nullptr);
     root.appendChild (PresetBank::presetToValueTree (workingPreset), nullptr);
 
     if (auto xml = root.createXml())
         copyXmlToBinary (*xml, destData);
+}
+
+void StutterCloneAudioProcessor::setFirstGestureNote (int midiNote)
+{
+    const int clamped = stutter::clampFirstGestureNote (midiNote);
+
+    if (clamped == getFirstGestureNote())
+        return;
+
+    firstGestureNote.store (clamped, std::memory_order_relaxed);
+    sendChangeMessage();
 }
 
 void StutterCloneAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -1009,6 +1073,10 @@ void StutterCloneAudioProcessor::setStateInformation (const void* data, int size
 
         if (params.isValid())
             apvts.replaceState (params);
+
+        if (root.hasProperty ("firstGestureNote"))
+            firstGestureNote.store (stutter::clampFirstGestureNote (static_cast<int> (root.getProperty ("firstGestureNote"))),
+                                    std::memory_order_relaxed);
 
         auto presetTree = root.getChildWithName ("PRESET");
 

@@ -41,11 +41,12 @@ private:
     juce::ToggleButton delayCutButton { "Delay Cut" };
     juce::ToggleButton reverbCutButton { "Reverb Cut" };
     juce::ToggleButton unfreezeButton { "Unfreeze Loop" };
+    juce::ToggleButton pingPongButton { "Ping-Pong" };
 
     juce::Viewport viewport;
     juce::Component lanesContainer;
     std::array<std::unique_ptr<CurveLane>, stutter::numCurves> lanes;
-    std::array<juce::Label, 5> groupLabels;
+    std::array<juce::Label, stutter::numLaneGroups> groupLabels;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ActionEditor)
 };

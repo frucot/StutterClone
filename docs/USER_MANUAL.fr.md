@@ -1,6 +1,6 @@
 # Manuel utilisateur StutterClone
 
-Version **0.0.5-beta**. English: [USER_MANUAL.md](USER_MANUAL.md).
+Version **0.0.5**. English: [USER_MANUAL.md](USER_MANUAL.md).
 
 StutterClone est un **effet audio** déclenché par **MIDI**. Ce n'est pas un synthétiseur : il traite le son déjà présent sur la piste, et une note MIDI de **C3 à B3** décide *quand* stutter et *comment*.
 
@@ -18,7 +18,7 @@ L'audio entrant est toujours enregistré dans un buffer circulaire (environ quat
 
 Les notes hors C3–B3 sont ignorées. Si plusieurs notes de geste sont tenues en même temps, **la plus aiguë gagne**.
 
-Le clavier à l'écran **sélectionne l'action à éditer**. Il ne déclenche pas la lecture. Seul le MIDI qui arrive au plugin (contrôleur, clip MIDI, ou entrée MIDI du standalone) lance le stutter.
+Le clavier à l'écran **sélectionne l'action à éditer** (cyan) et **joue ce slot tant que le clic est maintenu** (orange). Le MIDI d'un contrôleur, d'un clip ou du standalone déclenche les mêmes slots.
 
 ## Installation
 
@@ -94,7 +94,8 @@ Le plugin s'ouvre **déplié**. **Editor** (en haut à droite) replie le panneau
 | Contrôle | Rôle |
 | --- | --- |
 | Titre / version | Nom du plugin et version affichée |
-| Ligne de geste | Note en lecture ou en attente, division courante, et pas (par exemple `C3 \| 1/16 \| step 3`). Au repos : `C3-B3 \| hold a note` |
+| ? | Overlay court : routage, gestes, et fonctionnement des actions |
+| Ligne de geste | Note en lecture ou en attente, division courante, et pas (par exemple `C3 \| 1/16 \| step 3`). Au repos : `C3-B3 \| hold a note` (la plage suit Octave - / +) |
 | Badge BPM | Tempo annoncé par l'hôte |
 | Badge MIDI | `Inactive` (rouge) / `Pending` (jaune, attente Quantize) / `Active` (cyan) |
 
@@ -122,10 +123,12 @@ La session du DAW stocke aussi le preset de travail avec l'état du plugin : un 
 
 La waveform est le buffer de capture : entrée live au repos, fragment en boucle pendant un geste (tête d'écriture en jaune).
 
-Le clavier C3–B3 :
+Le clavier à douze touches (défaut C3–B3 = MIDI 60–71). **Octave - / +** déplacent toute la fenêtre de 12 notes MIDI :
 
-- Un clic sur une touche **édite** l'action de cette note (et déplie l'éditeur s'il était replié).
-- Les touches s'allument quand cette note MIDI est réellement tenue.
+- Un clic sur une touche **édite** l'action de ce slot (cyan) et déplie l'éditeur s'il était replié.
+- **Maintenir le clic** joue le slot ; un overlay orange montre la note en train de sonner.
+- Les touches s'allument aussi en orange quand la note MIDI correspondante est tenue.
+- Octave - place le slot 1 sur MIDI 48 (C2) ; Octave + sur MIDI 72 (C4). Les douze actions restent dans les mêmes slots.
 
 ### Classic d'usine (divisions par défaut)
 
@@ -141,21 +144,22 @@ Tant que vous ne dessinez pas de courbes, **Classic** ne change que la **Divisio
 | G#3 | 1/8T |
 | A3 | 1/16T |
 | A#3 | 1/32T |
-| B3 | 1/8S |
+| B3 | 1/1 |
 
-T = triolet, S = sextolet.
+T = triolet. Les anciens presets en sextolets (`S`) se chargent comme le triolet correspondant.
 
 ## Éditeur d'action
 
 Chaque note a sa propre action. Cliquez le clavier (ou jouez une note, puis cliquez la touche) pour l'éditer. Un playhead rouge parcourt les lanes tant que cette note est le geste actif.
 
-Les courbes couvrent **une mesure** (quatre temps en 4/4), puis recommencent tant que vous tenez la note. L'axe horizontal est le temps ; le nombre de colonnes est **Grid**.
+Les courbes couvrent **une mesure** (quatre temps en 4/4). En mode normal elles recommencent tant que vous tenez la note. Avec **Ping-Pong**, la mesure est lue à l'endroit puis à l'envers (huit temps), puis ça recommence. L'axe horizontal est le temps ; le nombre de colonnes est **Grid**.
 
 ### Barre d'outils
 
 | Contrôle | Rôle |
 | --- | --- |
 | Grid | `4`, `8`, `16` ou `32` pas sur la mesure. Changer la grille rééchantillonne les courbes existantes |
+| Ping-Pong | Off (défaut) : revenir au début de la mesure. On : lire la mesure à l'endroit puis à l'envers (8 temps) |
 | Unfreeze Loop | Off (défaut) : garder le fragment capturé au début du geste. On : recapturer depuis le ring à chaque période **Loop** |
 | Loop | Période de recapture si Unfreeze est on : `1 Beat`, `2 Beats`, `3 Beats`, `1 Bar`, `2 Bars` |
 | Delay Cut | À la relâche, vider le delay pour que les queues ne continuent pas |
@@ -173,7 +177,7 @@ Sans les options Cut, delay et reverb peuvent encore sonner pendant le court fon
 
 | Lane | Rôle |
 | --- | --- |
-| Division | Longueur de boucle en temps : `1/4` … `1/64`, plus triolets (`T`) et sextolets (`S`). La lane est ordonnée par durée : plus long en bas, plus court en haut |
+| Division | Longueur de boucle en temps : `1/1`, `1/2`, `1/4` … `1/64`, plus triolets (`T`). La lane est ordonnée par durée : plus long en bas, plus court en haut |
 | Reverse | Lire le fragment à l'envers |
 | Alt Pan | Alterner le stutter gauche / droite (le bascule est lissé pour éviter les clics) |
 
@@ -228,7 +232,7 @@ La chaîne d'effets est **filtre → lo-fi → delay → reverb**, et elle ne to
 
 | Symptôme | À vérifier |
 | --- | --- |
-| Pas de stutter, en-tête Inactive | Le MIDI n'arrive pas au plugin, ou les notes ne sont pas C3–B3 |
+| Pas de stutter, en-tête Inactive | Le MIDI n'arrive pas au plugin, ou les notes sont hors de la fenêtre Octave courante |
 | Pending sans fin | Transport arrêté, ou la grille Quantize n'est jamais atteinte. Essayer `None` |
 | Stutter sans FX | Filter On, Lo-Fi On, Delay On, Reverb On sont off sur ces pas |
 | Delay ou reverb qui traîne après la relâche | Activer Delay Cut / Reverb Cut sur cette action |
