@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
-# Display version matches the CMake/JUCE semver used as the machine-readable equivalent.
-set(STUTTERCLONE_VERSION_STRING "0.0.4")
+# Display version may carry a pre-release suffix; CMake/JUCE VERSION stays numeric.
+set(STUTTERCLONE_VERSION_STRING "0.0.5-beta")
 
 project(StutterClone
-    VERSION 0.0.4
+    VERSION 0.0.5
     DESCRIPTION "Tempo-synced MIDI-triggered stutter effect"
     LANGUAGES C CXX)
 

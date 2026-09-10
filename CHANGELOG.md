@@ -3,7 +3,16 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.4`).
+and the public display version now matches the CMake semver (`0.0.5-beta`).
+
+## [0.0.5-beta] - 2026-09-10
+
+### Fixed
+
+- Ableton Live 9 (AU) and Live 10.1 (VST3) rejecting or crashing the editor on load:
+  heavy UI was constructed before the processor was ready, then `setSize` ran again
+  while the host attached IPlugView
+- Older VST3 hosts querying disabled/empty bus layouts, which could blacklist the plugin
 
 ## [0.0.4] - 2026-09-09
 

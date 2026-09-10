@@ -24,16 +24,16 @@ Source/
 
 There is one source of truth in `CMakeLists.txt`:
 
-1. `project(StutterClone VERSION 0.0.4 …)` — semantic version used by CMake and JUCE (`JucePlugin_Version`).
-2. `STUTTERCLONE_VERSION_STRING` (`"0.0.4"`) — string shown in the editor and in human-facing docs.
+1. `project(StutterClone VERSION 0.0.5 …)` — semantic version used by CMake and JUCE (`JucePlugin_Version`).
+2. `STUTTERCLONE_VERSION_STRING` (`"0.0.5-beta"`) — string shown in the editor and in human-facing docs.
 
 CMake generates `build/generated/Version.h` from `Source/Version.h.in`. Include `"Version.h"` anywhere you need the display string.
 
 When cutting a release:
 
-1. Bump both values together (for example `0.0.4` / `"0.0.4"`).
+1. Bump both values together (for example `0.0.5` / `"0.0.5-beta"`).
 2. Add an entry to [CHANGELOG.md](../CHANGELOG.md).
-3. Commit, tag (`git tag v0.0.4`), and push the tag.
+3. Commit, tag (`git tag v0.0.5-beta`), and push the tag.
 
 ## Real-time rules
 
