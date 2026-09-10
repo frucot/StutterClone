@@ -32,10 +32,16 @@ private:
     void updateEditorToggleText();
     void applyResizeLimits();
     int preferredExpandedHeight() const noexcept;
-    void applyPreferredExpandedSize();
+    void updateHostViewAttached() noexcept;
     void promptSaveAs();
     void dismissSaveAsOverlay();
     void layoutSaveAsOverlay();
+    void promptHelp();
+    void dismissHelpOverlay();
+    void layoutHelpOverlay();
+    void applyOctaveOffset (int delta);
+    void syncOctaveControls();
+    juce::String gestureRangeText() const;
 
     StutterCloneAudioProcessor& processorRef;
 
@@ -51,14 +57,19 @@ private:
     juce::Label quantizeLabel;
     juce::ComboBox quantizeBox;
     juce::TextButton editorToggle;
-    WaveformDisplay waveformDisplay;
-    NoteKeyboard keyboard;
-    ActionEditor actionEditor;
+    juce::TextButton helpButton { "?" };
+    juce::TextButton octaveDownButton { "-" };
+    juce::TextButton octaveUpButton { "+" };
+    std::unique_ptr<WaveformDisplay> waveformDisplay;
+    std::unique_ptr<NoteKeyboard> keyboard;
+    std::unique_ptr<ActionEditor> actionEditor;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> quantizeAttachment;
     std::unique_ptr<juce::Component> saveAsOverlay;
+    std::unique_ptr<juce::Component> helpOverlay;
 
     bool editorExpanded = true;
+    bool hostViewAttached = false;
     int lastExpandedHeight = 760;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StutterCloneAudioProcessorEditor)

@@ -3,7 +3,33 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.4`).
+and the public display version now matches the CMake semver (`0.0.5`).
+
+## [0.0.5] - 2026-09-10
+
+### Added
+
+- Octave - / + move the twelve gesture slots by one octave (default MIDI 60–71)
+- Click-and-hold on the plugin keyboard plays the selected slot; cyan = edit selection, orange = sounding note
+- Per-action Ping-Pong: the bar plays forward then backward (8 beats) instead of wrapping
+- Help overlay (`?`) with a short routing and gesture summary
+- Stutter divisions `1/1`, `1/2`, and their triplets
+
+### Changed
+
+- Sextuplet stutter divisions (`1/8S`, `1/16S`, `1/32S`) removed; older presets remap S to the matching T
+- Factory Classic B maps to `1/1`
+- Capture ring is 12 seconds so a whole-bar slice still fits at slow tempos
+- Effect groups and DSP stages are table-driven so extra modules can be added without rewriting the editor layout
+
+## [0.0.5-beta] - 2026-09-10
+
+### Fixed
+
+- Ableton Live 9 (AU) and Live 10.1 (VST3) rejecting or crashing the editor on load:
+  heavy UI was constructed before the processor was ready, then `setSize` ran again
+  while the host attached IPlugView
+- Older VST3 hosts querying disabled/empty bus layouts, which could blacklist the plugin
 
 ## [0.0.4] - 2026-09-09
 

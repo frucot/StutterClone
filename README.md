@@ -2,11 +2,11 @@
 
 [![Build](https://github.com/frucot/StutterClone/actions/workflows/build.yml/badge.svg)](https://github.com/frucot/StutterClone/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.4-cyan.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.0.5-cyan.svg)](CHANGELOG.md)
 
-**Version 0.0.4** — MIDI-triggered, tempo-synced stutter / glitch effect for VST3, AU, and standalone.
+**Version 0.0.5** — MIDI-triggered, tempo-synced stutter / glitch effect for VST3, AU, and standalone.
 
-[Français](README.fr.md) · [Developer guide](docs/DEVELOPER.md) · [Guide développeur](docs/DEVELOPER.fr.md)
+[Français](README.fr.md) · [User manual](docs/USER_MANUAL.md) · [Manuel utilisateur](docs/USER_MANUAL.fr.md) · [Developer guide](docs/DEVELOPER.md) · [Guide développeur](docs/DEVELOPER.fr.md)
 
 ## What it is
 
@@ -18,9 +18,12 @@ This project is independent and is not affiliated with any commercial stutter pr
 
 ## Features
 
-- Tempo-synced beat repeat with straight, triplet, and sextuplet divisions
-- Per-note action editor (C3–B3) with drawable parameter curves
+- Tempo-synced beat repeat with straight and triplet divisions (`1/1` to `1/64`)
+- Per-note action editor (twelve slots, default MIDI 60–71) with drawable parameter curves
+- Octave - / + shift the whole slot window by 12 MIDI notes (C2 / C3 / C4 …)
 - Quantize start: `None`, `1/4`, `1/8`, `1/16`, `1/32`
+- Ping-Pong playback of each action (forward then reverse over two bars)
+- In-plugin help overlay
 - Factory preset **Classic** plus user presets on disk
 - Live waveform display of the capture ring
 - Formats: **VST3** (macOS, Windows, Linux), **AU** (macOS), **Standalone**
@@ -56,10 +59,14 @@ Rescan plugins (or restart the DAW) before loading a new build.
 
 ## Usage
 
+See the [user manual](docs/USER_MANUAL.md) for the full walkthrough (interface, actions, presets) and a **step-by-step Ableton Live MIDI routing** example.
+
+Short version:
+
 1. Insert **StutterClone** as an **audio effect** on an audio track.
 2. Route MIDI into the plugin (AU is registered as a Music Effect so hosts expose a MIDI input).
-3. Play or hold notes **C3–B3**. The effect waits for the next quantize grid (or starts immediately if Quantize is `None`), then loops the captured slice for one bar while the note is held.
-4. Open **Edit Action** to draw curves for that note. Save the twelve actions as a preset.
+3. Play or hold notes **C3–B3**. The effect waits for the next quantize grid (or starts immediately if Quantize is `None`), then loops the captured slice while the note is held.
+4. Click a key on the plugin keyboard to edit that note's curves. Save the twelve actions as a preset.
 
 User presets are stored in:
 
@@ -69,7 +76,7 @@ User presets are stored in:
 
 ## Versioning
 
-The public version is **0.0.4**. CMake and plugin metadata use the same semantic version `0.0.4` (major.minor.patch). The display string `STUTTERCLONE_VERSION_STRING` is defined in [`CMakeLists.txt`](CMakeLists.txt) and generated into `Version.h`. Change those two places together when you bump a release. See [CHANGELOG.md](CHANGELOG.md).
+The public version is **0.0.5**. CMake, JUCE, and `STUTTERCLONE_VERSION_STRING` all use `0.0.5`. They are defined in [`CMakeLists.txt`](CMakeLists.txt) and the display string is generated into `Version.h`. Change those two places together when you bump a release. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 

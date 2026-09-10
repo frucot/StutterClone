@@ -2,11 +2,11 @@
 
 [![Build](https://github.com/frucot/StutterClone/actions/workflows/build.yml/badge.svg)](https://github.com/frucot/StutterClone/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.4-cyan.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.0.5-cyan.svg)](CHANGELOG.md)
 
-**Version 0.0.4** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
+**Version 0.0.5** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
 
-[English](README.md) · [Guide développeur](docs/DEVELOPER.fr.md) · [Developer guide](docs/DEVELOPER.md)
+[English](README.md) · [Manuel utilisateur](docs/USER_MANUAL.fr.md) · [User manual](docs/USER_MANUAL.md) · [Guide développeur](docs/DEVELOPER.fr.md) · [Developer guide](docs/DEVELOPER.md)
 
 ## Présentation
 
@@ -18,9 +18,12 @@ Ce projet est indépendant et n'est affilié à aucun produit commercial de stut
 
 ## Fonctionnalités
 
-- Beat repeat synchronisé au tempo, divisions droites, triolets et sextolets
-- Éditeur d'action par note (C3–B3) avec courbes dessinables
+- Beat repeat synchronisé au tempo, divisions droites et triolets (`1/1` à `1/64`)
+- Éditeur d'action par note (douze slots, MIDI 60–71 par défaut) avec courbes dessinables
+- Octave - / + décalent toute la fenêtre de 12 notes MIDI (C2 / C3 / C4 …)
 - Quantize de départ : `None`, `1/4`, `1/8`, `1/16`, `1/32`
+- Ping-Pong par action (mesure à l'endroit puis à l'envers)
+- Overlay d'aide dans le plugin
 - Preset d'usine **Classic** et presets utilisateur sur disque
 - Affichage de la forme d'onde du buffer circulaire
 - Formats : **VST3** (macOS, Windows, Linux), **AU** (macOS), **Standalone**
@@ -56,10 +59,14 @@ Relancez un rescan (ou le DAW) avant de charger une nouvelle version.
 
 ## Utilisation
 
+Le [manuel utilisateur](docs/USER_MANUAL.fr.md) détaille l'interface, les actions, les presets, et un **exemple de routage MIDI dans Ableton Live**.
+
+En bref :
+
 1. Insérer **StutterClone** comme **effet audio** sur une piste audio.
 2. Router le MIDI vers le plugin (l'AU est un Music Effect, l'hôte expose une entrée MIDI).
-3. Jouer ou maintenir les notes **C3–B3**. L'effet attend la prochaine grille de quantize (ou part tout de suite si Quantize = `None`), puis boucle le fragment capturé pendant une mesure tant que la note est tenue.
-4. Ouvrir **Edit Action** pour dessiner les courbes de cette note. Enregistrer les douze actions comme preset.
+3. Jouer ou maintenir les notes **C3–B3**. L'effet attend la prochaine grille de quantize (ou part tout de suite si Quantize = `None`), puis boucle le fragment capturé tant que la note est tenue.
+4. Cliquer une touche du clavier du plugin pour éditer les courbes de cette note. Enregistrer les douze actions comme preset.
 
 Presets utilisateur :
 
@@ -69,7 +76,7 @@ Presets utilisateur :
 
 ## Versions
 
-La version publique est **0.0.4**. CMake et les métadonnées du plugin utilisent le même semver `0.0.4`. La chaîne affichée `STUTTERCLONE_VERSION_STRING` est définie dans [`CMakeLists.txt`](CMakeLists.txt) et générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
+La version publique est **0.0.5**. CMake, JUCE et `STUTTERCLONE_VERSION_STRING` utilisent tous `0.0.5`. Ils sont définis dans [`CMakeLists.txt`](CMakeLists.txt) et la chaîne d'affichage est générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuer
 

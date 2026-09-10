@@ -35,7 +35,7 @@ namespace
     juce::ValueTree actionToTree (const stutter::Action& action, int noteIndex)
     {
         juce::ValueTree tree (actionType);
-        tree.setProperty ("note", stutter::noteForGestureIndex (noteIndex), nullptr);
+        tree.setProperty ("note", stutter::noteForGestureIndex (noteIndex, stutter::defaultFirstGestureNote), nullptr);
         tree.setProperty ("grid", action.gridResolution, nullptr);
         tree.setProperty ("filterType", action.filterType, nullptr);
         tree.setProperty ("delayDivision", action.delayDivision, nullptr);
@@ -43,6 +43,8 @@ namespace
         tree.setProperty ("reverbCut", action.reverbCut != 0, nullptr);
         tree.setProperty ("loopUnfreeze", action.loopUnfreeze != 0, nullptr);
         tree.setProperty ("loopPeriod", action.loopPeriod, nullptr);
+        tree.setProperty ("pingPong", action.pingPong != 0, nullptr);
+        tree.setProperty ("divTable", stutter::currentDivTable, nullptr);
 
         for (int c = 0; c < stutter::numCurves; ++c)
         {
@@ -67,7 +69,7 @@ namespace
         return tree;
     }
 
-    stutter::Action actionFromTree (const juce::ValueTree& tree)
+    stutter::Action actionFromTree (const juce::ValueTree& tree, int fallbackDivTable)
     {
         stutter::Action action;
         stutter::initActionDefaults (action);
@@ -79,6 +81,9 @@ namespace
         action.reverbCut = static_cast<bool> (tree.getProperty ("reverbCut", false)) ? 1 : 0;
         action.loopUnfreeze = static_cast<bool> (tree.getProperty ("loopUnfreeze", false)) ? 1 : 0;
         action.loopPeriod = juce::jlimit (0, stutter::numLoopPeriods - 1, static_cast<int> (tree.getProperty ("loopPeriod", 3)));
+        action.pingPong = static_cast<bool> (tree.getProperty ("pingPong", false)) ? 1 : 0;
+        const int divTable = juce::jlimit (1, stutter::currentDivTable,
+                                           static_cast<int> (tree.getProperty ("divTable", fallbackDivTable)));
 
         for (const auto& child : tree)
         {
@@ -111,6 +116,7 @@ namespace
                     action.curves[curveIndex][i] = action.curves[curveIndex][count - 1];
         }
 
+        stutter::migrateDivisionCurveIfNeeded (action, divTable);
         return action;
     }
 }
@@ -209,6 +215,7 @@ juce::ValueTree PresetBank::presetToValueTree (const Preset& preset)
     juce::ValueTree tree (rootType);
     tree.setProperty ("name", preset.name, nullptr);
     tree.setProperty ("quantize", juce::jlimit (0, stutter::numQuantizeChoices - 1, preset.quantizeIndex), nullptr);
+    tree.setProperty ("divTable", stutter::currentDivTable, nullptr);
 
     for (int i = 0; i < stutter::numGestureNotes; ++i)
         tree.appendChild (actionToTree (preset.actions[static_cast<size_t> (i)], i), nullptr);
@@ -227,6 +234,8 @@ Preset PresetBank::presetFromValueTree (const juce::ValueTree& tree)
     preset.name = tree.getProperty ("name", "Classic").toString();
     preset.quantizeIndex = juce::jlimit (0, stutter::numQuantizeChoices - 1,
                                          static_cast<int> (tree.getProperty ("quantize", 0)));
+    const int fallbackDivTable = juce::jlimit (1, stutter::currentDivTable,
+                                               static_cast<int> (tree.getProperty ("divTable", 1)));
 
     for (const auto& child : tree)
     {
@@ -235,10 +244,10 @@ Preset PresetBank::presetFromValueTree (const juce::ValueTree& tree)
 
         const int note = static_cast<int> (child.getProperty ("note", -1));
 
-        if (! stutter::isGestureNote (note))
+        if (! stutter::isCanonicalSlotNote (note))
             continue;
 
-        preset.actions[static_cast<size_t> (stutter::gestureIndexForNote (note))] = actionFromTree (child);
+        preset.actions[static_cast<size_t> (stutter::gestureIndexForNote (note, stutter::defaultFirstGestureNote))] = actionFromTree (child, fallbackDivTable);
     }
 
     return preset;

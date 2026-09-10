@@ -1,6 +1,6 @@
 # Guide développeur
 
-Document pour compiler, déboguer ou étendre StutterClone. Pour l'installation utilisateur, voir [README.fr.md](../README.fr.md). English: [DEVELOPER.md](DEVELOPER.md).
+Document pour compiler, déboguer ou étendre StutterClone. Pour jouer du plugin, voir le [manuel utilisateur](USER_MANUAL.fr.md). Pour l'installation courte, voir [README.fr.md](../README.fr.md). English: [DEVELOPER.md](DEVELOPER.md).
 
 ## Organisation du dépôt
 
@@ -14,7 +14,7 @@ Source/
   DspChain.*            Filtre → lo-fi → delay → reverb
   ActionEditor.*        Fenêtre de courbes par note
   CurveLane.*           Widget de pas
-  NoteKeyboard.*        Clavier C3–B3
+  NoteKeyboard.*        Clavier C3–B3 (octave d'affichage réglable)
   WaveformDisplay.*     Vue du buffer circulaire
   Version.h.in          En-tête de version généré
 .github/workflows/      CI (VST3 Windows + Linux)
@@ -24,16 +24,16 @@ Source/
 
 Une seule source de vérité dans `CMakeLists.txt` :
 
-1. `project(StutterClone VERSION 0.0.4 …)` — semver utilisé par CMake et JUCE (`JucePlugin_Version`).
-2. `STUTTERCLONE_VERSION_STRING` (`"0.0.4"`) — chaîne affichée dans l'éditeur et la doc.
+1. `project(StutterClone VERSION 0.0.5 …)` — semver utilisé par CMake et JUCE (`JucePlugin_Version`).
+2. `STUTTERCLONE_VERSION_STRING` (`"0.0.5"`) — chaîne affichée dans l'éditeur et la doc.
 
 CMake génère `build/generated/Version.h` à partir de `Source/Version.h.in`. Inclure `"Version.h"` pour la chaîne d'affichage.
 
 Pour une release :
 
-1. Incrémenter les deux valeurs ensemble (par exemple `0.0.4` / `"0.0.4"`).
+1. Incrémenter les deux valeurs ensemble (par exemple `0.0.6` / `"0.0.6"`).
 2. Ajouter une entrée dans [CHANGELOG.md](../CHANGELOG.md).
-3. Commit, tag (`git tag v0.0.4`), pousser le tag.
+3. Commit, tag (`git tag v0.0.6`), pousser le tag.
 
 ## Règles temps réel
 
@@ -47,21 +47,22 @@ Allouer les objets DSP et les buffers dans `prepareToPlay`. L'UI copie les douze
 
 ## Architecture audio / MIDI
 
-1. L'audio entrant est toujours écrit dans un ring buffer de 4 secondes.
-2. Un Note On sur C3–B3 arme une gesture en attente (ou démarre tout de suite si Quantize = `None`).
-3. Au prochain tick de grille PPQ, le plugin capture les N derniers samples, lance le stutter, et lit les courbes de la note sur 4 beats (une mesure en 4/4), en boucle tant que la note est tenue.
-4. `GestureDspChain` ne tourne que pendant la gesture (ou son fade-out).
+1. L'audio entrant est toujours écrit dans un ring buffer de 12 secondes.
+2. Un Note On dans la fenêtre de 12 notes (défaut MIDI 60–71 / C3–B3 ; Octave - / + décale de 12) arme une gesture en attente (ou démarre tout de suite si Quantize = `None`).
+3. Au prochain tick de grille PPQ, le plugin capture les N derniers samples, lance le stutter, et lit les courbes de la note sur 4 beats (une mesure en 4/4). Avec Ping-Pong, la mesure est ensuite lue à l'envers (cycle de 8 beats). Boucle tant que la note est tenue.
+4. `GestureDspChain` ne tourne que pendant la gesture (ou son fade-out). Étapes : `processFilter` → `processLoFi` → `processDelay` → `processReverb`.
 
-Les notes hors C3–B3 sont ignorées. Si plusieurs notes de gesture sont tenues, la plus haute gagne.
+Les notes hors de la fenêtre d'octave courante sont ignorées. Si plusieurs notes de gesture sont tenues, la plus haute gagne.
 
-Les courbes d'action ne sont **pas** des paramètres APVTS (cela exploserait le nombre de paramètres hôte). Elles vivent dans un `ValueTree` sauvé à côté de l'APVTS dans `getStateInformation`.
+Les courbes d'action ne sont **pas** des paramètres APVTS (cela exploserait le nombre de paramètres hôte). Elles vivent dans un `ValueTree` sauvé à côté de l'APVTS dans `getStateInformation`. La fenêtre de slots (`firstGestureNote`) est stockée dans la session, pas dans les presets. Le XML des presets identifie toujours les slots par MIDI 60–71 canonique.
 
 ## Ajouter un paramètre courbé
 
-1. Ajouter une valeur à `stutter::Curve` dans `Action.h` et mettre à jour `numCurves`.
-2. Lui donner un id XML, une valeur par défaut, et une lecture dans `evaluateAction`.
-3. La mapper dans `PresetBank.cpp` ; l'éditeur crée une `CurveLane` par `Curve`.
-4. Consommer la valeur évaluée dans `PluginProcessor::processFxSlice` ou la boucle stutter.
+1. Ajouter une valeur à `stutter::Curve` dans `Action.h` (enum contigu) et mettre à jour `numCurves`.
+2. Lui donner un id XML dans `PresetBank.cpp`, une valeur par défaut dans `initActionDefaults`, et une lecture dans `evaluateAction` / `EvaluatedStep`.
+3. Ajouter ou étendre une ligne dans `stutter::laneGroups` (titre, index de départ, nombre). L'éditeur crée une `CurveLane` par `Curve`.
+4. Ajouter les champs correspondants à `GestureDspChain::Settings` et une étape `process*` nommée dans `DspChain.cpp` (dans l'ordre filtre → lo-fi → delay → reverb).
+5. Consommer la valeur évaluée dans `PluginProcessor::processFxSlice` ou la boucle stutter.
 
 Garder des structures POD à taille fixe pour des copies sans allocation.
 

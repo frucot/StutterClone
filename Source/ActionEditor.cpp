@@ -7,24 +7,6 @@ namespace
     constexpr int gateLaneHeight = 22;
     constexpr int groupHeaderHeight = 24;
     constexpr int columnGap = 10;
-    constexpr int leftColumnGroups = 3;
-    constexpr int filterGroupIndex = 1;
-    constexpr int delayGroupIndex = 3;
-
-    struct LaneGroup
-    {
-        const char* title;
-        int start;
-        int count;
-    };
-
-    constexpr LaneGroup groups[] {
-        { "Stutter", 0, 3 },
-        { "Filter",  3, 3 },
-        { "Lo-Fi",   6, 3 },
-        { "Delay",   9, 3 },
-        { "Reverb",  12, 4 }
-    };
 
     int lanesContentHeight() noexcept
     {
@@ -32,12 +14,12 @@ namespace
         int yRight = 0;
         int curveIndex = 0;
 
-        for (size_t g = 0; g < sizeof (groups) / sizeof (groups[0]); ++g)
+        for (int g = 0; g < stutter::numLaneGroups; ++g)
         {
-            int& y = g >= static_cast<size_t> (leftColumnGroups) ? yRight : yLeft;
+            int& y = g >= stutter::leftColumnGroups ? yRight : yLeft;
             y += groupHeaderHeight;
 
-            for (int i = 0; i < groups[g].count; ++i, ++curveIndex)
+            for (int i = 0; i < stutter::laneGroups[g].count; ++i, ++curveIndex)
             {
                 const auto curve = static_cast<stutter::Curve> (curveIndex);
                 y += (stutter::isGateCurve (curve) ? gateLaneHeight : laneHeight) + 4;
@@ -127,9 +109,16 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
         commitAction();
     };
 
+    styleToggle (pingPongButton);
+    pingPongButton.onClick = [this]
+    {
+        localAction.pingPong = pingPongButton.getToggleState() ? 1 : 0;
+        commitAction();
+    };
+
     for (size_t i = 0; i < groupLabels.size(); ++i)
     {
-        groupLabels[i].setText (groups[i].title, juce::dontSendNotification);
+        groupLabels[i].setText (stutter::laneGroups[i].title, juce::dontSendNotification);
         groupLabels[i].setColour (juce::Label::textColourId, UiColours::accent);
         groupLabels[i].setFont (juce::Font { juce::FontOptions { 13.0f, juce::Font::bold } });
         lanesContainer.addAndMakeVisible (groupLabels[i]);
@@ -193,6 +182,7 @@ void ActionEditor::reloadFromProcessor()
                                         juce::dontSendNotification);
     unfreezeButton.setToggleState (localAction.loopUnfreeze != 0, juce::dontSendNotification);
     loopPeriodBox.setEnabled (localAction.loopUnfreeze != 0);
+    pingPongButton.setToggleState (localAction.pingPong != 0, juce::dontSendNotification);
 
     for (int i = 0; i < stutter::numCurves; ++i)
         lanes[static_cast<size_t> (i)]->setAction (&localAction, static_cast<stutter::Curve> (i));
@@ -220,7 +210,9 @@ void ActionEditor::resized()
     auto controls = bounds.removeFromTop (26);
     gridLabel.setBounds (controls.removeFromLeft (36));
     gridBox.setBounds (controls.removeFromLeft (56));
-    controls.removeFromLeft (10);
+    controls.removeFromLeft (8);
+    pingPongButton.setBounds (controls.removeFromLeft (92));
+    controls.removeFromLeft (8);
     unfreezeButton.setBounds (controls.removeFromLeft (120));
     controls.removeFromLeft (8);
     loopPeriodLabel.setBounds (controls.removeFromLeft (36));
@@ -244,20 +236,20 @@ void ActionEditor::resized()
 
     for (size_t g = 0; g < groupLabels.size(); ++g)
     {
-        const bool rightCol = g >= static_cast<size_t> (leftColumnGroups);
+        const bool rightCol = g >= static_cast<size_t> (stutter::leftColumnGroups);
         int& y = rightCol ? yRight : yLeft;
         const int x = rightCol ? rightX : 0;
         const int titleW = juce::jmin (colW,
-            juce::GlyphArrangement::getStringWidthInt (headerFont, groups[g].title) + 8);
+            juce::GlyphArrangement::getStringWidthInt (headerFont, stutter::laneGroups[g].title) + 8);
 
         groupLabels[g].setBounds (x, y, titleW, groupHeaderHeight);
 
-        if (g == static_cast<size_t> (filterGroupIndex))
+        if (g == static_cast<size_t> (stutter::filterGroupIndex))
         {
             const int comboW = juce::jlimit (titleW, colW - titleW - 4, titleW + 52);
             filterTypeBox.setBounds (x + titleW, y, comboW, groupHeaderHeight);
         }
-        else if (g == static_cast<size_t> (delayGroupIndex))
+        else if (g == static_cast<size_t> (stutter::delayGroupIndex))
         {
             const int comboW = juce::jlimit (titleW, colW - titleW - 4, titleW + 28);
             delayDivBox.setBounds (x + titleW, y, comboW, groupHeaderHeight);
@@ -265,7 +257,7 @@ void ActionEditor::resized()
 
         y += groupHeaderHeight;
 
-        for (int i = 0; i < groups[g].count; ++i, ++curveIndex)
+        for (int i = 0; i < stutter::laneGroups[g].count; ++i, ++curveIndex)
         {
             const auto curve = static_cast<stutter::Curve> (curveIndex);
             const int height = stutter::isGateCurve (curve) ? gateLaneHeight : laneHeight;
@@ -282,7 +274,7 @@ void ActionEditor::resized()
 void ActionEditor::timerCallback()
 {
     const bool playingThis = processor.isStutterActive()
-                          && processor.getGestureNote() == stutter::noteForGestureIndex (gestureIndex);
+                          && processor.getGestureNote() == stutter::noteForGestureIndex (gestureIndex, processor.getFirstGestureNote());
     const float beat = processor.getGestureBeat();
 
     for (auto& lane : lanes)

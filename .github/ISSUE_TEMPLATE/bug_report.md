@@ -20,7 +20,7 @@ A clear description of what went wrong.
 - OS:
 - DAW / host (or Standalone):
 - Format: VST3 / AU / Standalone
-- StutterClone version: 0.0.4
+- StutterClone version: 0.0.5
 - Sample rate / buffer size (if relevant):
 
 **Additional context**
