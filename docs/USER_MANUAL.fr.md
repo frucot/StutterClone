@@ -1,6 +1,6 @@
 # Manuel utilisateur StutterClone
 
-Version **0.0.5**. English: [USER_MANUAL.md](USER_MANUAL.md).
+Version **0.0.6**. English: [USER_MANUAL.md](USER_MANUAL.md).
 
 StutterClone est un **effet audio** déclenché par **MIDI**. Ce n'est pas un synthétiseur : il traite le son déjà présent sur la piste, et une note MIDI de **C3 à B3** décide *quand* stutter et *comment*.
 
@@ -98,6 +98,10 @@ Le plugin s'ouvre **déplié**. **Editor** (en haut à droite) replie le panneau
 | Ligne de geste | Note en lecture ou en attente, division courante, et pas (par exemple `C3 \| 1/16 \| step 3`). Au repos : `C3-B3 \| hold a note` (la plage suit Octave - / +) |
 | Badge BPM | Tempo annoncé par l'hôte |
 | Badge MIDI | `Inactive` (rouge) / `Pending` (jaune, attente Quantize) / `Active` (cyan) |
+
+### Mises à jour
+
+À l'ouverture de l'éditeur, StutterClone vérifie sur GitHub s'il existe une release plus récente. Si oui, une bannière s'affiche en haut avec un bouton **Releases** qui ouvre la [page des releases GitHub](https://github.com/frucot/StutterClone/releases) dans le navigateur. C'est une notification seulement : le plugin ne télécharge ni n'installe la mise à jour. Fermer la bannière la masque jusqu'à une version plus récente.
 
 ### Presets et Quantize
 

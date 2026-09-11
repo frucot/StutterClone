@@ -33,6 +33,11 @@ private:
     void applyResizeLimits();
     int preferredExpandedHeight() const noexcept;
     void updateHostViewAttached() noexcept;
+    void armUpdateCheck();
+    void maybeStartUpdateCheck();
+    void showUpdateBanner (const juce::String& version, const juce::String& tag);
+    void dismissUpdateBanner();
+    void layoutUpdateBanner();
     void promptSaveAs();
     void dismissSaveAsOverlay();
     void layoutSaveAsOverlay();
@@ -67,9 +72,12 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> quantizeAttachment;
     std::unique_ptr<juce::Component> saveAsOverlay;
     std::unique_ptr<juce::Component> helpOverlay;
+    std::unique_ptr<juce::Component> updateBanner;
 
     bool editorExpanded = true;
     bool hostViewAttached = false;
+    bool updateCheckStarted = false;
+    int updateCheckDelayTicks = 0;
     int lastExpandedHeight = 760;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StutterCloneAudioProcessorEditor)

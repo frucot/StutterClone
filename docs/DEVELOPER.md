@@ -16,6 +16,7 @@ Source/
   CurveLane.*           Step lane widget
   NoteKeyboard.*        C3–B3 keyboard (display octave is user-settable)
   WaveformDisplay.*     Ring-buffer view
+  UpdateChecker.*       GitHub latest-release check (editor banner)
   Version.h.in          Generated version header
 .github/workflows/      CI (Windows + Linux VST3)
 ```
@@ -24,16 +25,16 @@ Source/
 
 There is one source of truth in `CMakeLists.txt`:
 
-1. `project(StutterClone VERSION 0.0.5 …)` — semantic version used by CMake and JUCE (`JucePlugin_Version`).
-2. `STUTTERCLONE_VERSION_STRING` (`"0.0.5"`) — string shown in the editor and in human-facing docs.
+1. `project(StutterClone VERSION 0.0.6 …)` — semantic version used by CMake and JUCE (`JucePlugin_Version`).
+2. `STUTTERCLONE_VERSION_STRING` (`"0.0.6"`) — string shown in the editor and in human-facing docs.
 
 CMake generates `build/generated/Version.h` from `Source/Version.h.in`. Include `"Version.h"` anywhere you need the display string.
 
 When cutting a release:
 
-1. Bump both values together (for example `0.0.6` / `"0.0.6"`).
+1. Bump both values together (for example `0.0.7` / `"0.0.7"`).
 2. Add an entry to [CHANGELOG.md](../CHANGELOG.md).
-3. Commit, tag (`git tag v0.0.6`), and push the tag.
+3. Commit, tag (`git tag v0.0.7`), and push the tag.
 
 ## Real-time rules
 

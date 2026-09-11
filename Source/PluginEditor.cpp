@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "UiColours.h"
+#include "UpdateChecker.h"
 #include "Version.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -240,7 +241,74 @@ namespace
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HelpOverlay)
     };
 
+    class UpdateBanner final : public juce::Component
+    {
+    public:
+        std::function<void()> onOpenReleases;
+        std::function<void()> onDismiss;
+
+        UpdateBanner()
+        {
+            message.setJustificationType (juce::Justification::centredLeft);
+            message.setColour (juce::Label::textColourId, UiColours::text);
+            message.setFont (juce::Font { juce::FontOptions { 13.0f, juce::Font::bold } });
+            addAndMakeVisible (message);
+
+            releasesButton.setButtonText ("Releases");
+            releasesButton.setColour (juce::TextButton::buttonColourId, UiColours::accent);
+            releasesButton.setColour (juce::TextButton::textColourOffId, UiColours::background);
+            releasesButton.onClick = [this]
+            {
+                if (onOpenReleases)
+                    onOpenReleases();
+            };
+            addAndMakeVisible (releasesButton);
+
+            dismissButton.setButtonText (juce::String::fromUTF8 ("×"));
+            dismissButton.setColour (juce::TextButton::buttonColourId, UiColours::background);
+            dismissButton.setColour (juce::TextButton::textColourOffId, UiColours::text);
+            dismissButton.setTooltip ("Dismiss");
+            dismissButton.onClick = [this]
+            {
+                if (onDismiss)
+                    onDismiss();
+            };
+            addAndMakeVisible (dismissButton);
+        }
+
+        void setVersion (const juce::String& version)
+        {
+            message.setText ("Version " + version + " available", juce::dontSendNotification);
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (UiColours::panel);
+            g.setColour (UiColours::accent.withAlpha (0.65f));
+            g.fillRect (0, getHeight() - 2, getWidth(), 2);
+        }
+
+        void resized() override
+        {
+            auto bounds = getLocalBounds().reduced (10, 4);
+            dismissButton.setBounds (bounds.removeFromRight (28));
+            bounds.removeFromRight (6);
+            releasesButton.setBounds (bounds.removeFromRight (88));
+            bounds.removeFromRight (10);
+            message.setBounds (bounds);
+        }
+
+    private:
+        juce::Label message;
+        juce::TextButton releasesButton;
+        juce::TextButton dismissButton;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UpdateBanner)
+    };
+
     constexpr int kEditorWidth = 920;
+    constexpr int kUpdateBannerHeight = 32;
+    constexpr int kUpdateCheckDelayTicks = 24;
     constexpr int kCollapsedHeight = 230;
     constexpr int kMinWidth = 760;
     constexpr int kMaxWidth = 1200;
@@ -466,11 +534,79 @@ void StutterCloneAudioProcessorEditor::updateHostViewAttached() noexcept
 void StutterCloneAudioProcessorEditor::parentHierarchyChanged()
 {
     updateHostViewAttached();
+    armUpdateCheck();
 }
 
 void StutterCloneAudioProcessorEditor::visibilityChanged()
 {
     updateHostViewAttached();
+    armUpdateCheck();
+}
+
+void StutterCloneAudioProcessorEditor::armUpdateCheck()
+{
+    if (updateCheckStarted || updateCheckDelayTicks > 0 || ! hostViewAttached)
+        return;
+
+    updateCheckDelayTicks = kUpdateCheckDelayTicks;
+}
+
+void StutterCloneAudioProcessorEditor::maybeStartUpdateCheck()
+{
+    if (updateCheckStarted || ! hostViewAttached || getPeer() == nullptr)
+        return;
+
+    updateCheckStarted = true;
+    juce::Component::SafePointer<StutterCloneAudioProcessorEditor> safeThis (this);
+
+    UpdateChecker::startCheck ([safeThis] (UpdateChecker::Result result)
+    {
+        if (safeThis == nullptr || ! result.updateAvailable || safeThis->getPeer() == nullptr)
+            return;
+
+        safeThis->showUpdateBanner (result.latestVersion, result.latestTag);
+    });
+}
+
+void StutterCloneAudioProcessorEditor::showUpdateBanner (const juce::String& version, const juce::String& tag)
+{
+    if (updateBanner != nullptr || getPeer() == nullptr)
+        return;
+
+    auto banner = std::make_unique<UpdateBanner>();
+    banner->setVersion (version);
+    banner->onOpenReleases = [] { UpdateChecker::openReleasesPage(); };
+    banner->onDismiss = [this, tag]
+    {
+        UpdateChecker::dismissTag (tag);
+        dismissUpdateBanner();
+    };
+
+    addAndMakeVisible (*banner);
+    updateBanner = std::move (banner);
+    updateBanner->toFront (false);
+
+    if (saveAsOverlay != nullptr)
+        saveAsOverlay->toFront (false);
+
+    if (helpOverlay != nullptr)
+        helpOverlay->toFront (false);
+
+    resized();
+    repaint();
+}
+
+void StutterCloneAudioProcessorEditor::dismissUpdateBanner()
+{
+    updateBanner.reset();
+    resized();
+    repaint();
+}
+
+void StutterCloneAudioProcessorEditor::layoutUpdateBanner()
+{
+    if (updateBanner != nullptr)
+        updateBanner->setBounds (getLocalBounds().removeFromTop (kUpdateBannerHeight));
 }
 
 void StutterCloneAudioProcessorEditor::setEditorExpanded (bool shouldExpand)
@@ -605,15 +741,22 @@ void StutterCloneAudioProcessorEditor::changeListenerCallback (juce::ChangeBroad
 void StutterCloneAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (UiColours::background);
+
+    const int headerY = updateBanner != nullptr ? kUpdateBannerHeight : 0;
     g.setColour (UiColours::panel);
-    g.fillRect (0, 0, getWidth(), kHeaderBarHeight);
+    g.fillRect (0, headerY, getWidth(), kHeaderBarHeight);
     g.setColour (UiColours::accent);
-    g.fillRect (0, kHeaderBarHeight, getWidth(), 2);
+    g.fillRect (0, headerY + kHeaderBarHeight, getWidth(), 2);
 }
 
 void StutterCloneAudioProcessorEditor::resized()
 {
-    auto bounds = getLocalBounds().reduced (12, 8);
+    auto bounds = getLocalBounds();
+
+    if (updateBanner != nullptr)
+        bounds.removeFromTop (kUpdateBannerHeight);
+
+    bounds = bounds.reduced (12, 8);
 
     auto titleRow = bounds.removeFromTop (22);
     midiValueLabel.setBounds (titleRow.removeFromRight (80));
@@ -677,10 +820,19 @@ void StutterCloneAudioProcessorEditor::resized()
 
     layoutSaveAsOverlay();
     layoutHelpOverlay();
+    layoutUpdateBanner();
 }
 
 void StutterCloneAudioProcessorEditor::timerCallback()
 {
+    if (updateCheckDelayTicks > 0 && hostViewAttached)
+    {
+        --updateCheckDelayTicks;
+
+        if (updateCheckDelayTicks == 0)
+            maybeStartUpdateCheck();
+    }
+
     if (waveformDisplay != nullptr)
     {
         waveformDisplay->pullSnapshot();

@@ -3,7 +3,13 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.5`).
+and the public display version now matches the CMake semver (`0.0.6`).
+
+## [0.0.6] - 2026-09-11
+
+### Added
+
+- On editor open, a banner notifies if a newer GitHub release exists and links to the releases page (no automatic install)
 
 ## [0.0.5] - 2026-09-10
 

@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Display version may carry a pre-release suffix; CMake/JUCE VERSION stays numeric.
-set(STUTTERCLONE_VERSION_STRING "0.0.5")
+set(STUTTERCLONE_VERSION_STRING "0.0.6")
 
 project(StutterClone
-    VERSION 0.0.5
+    VERSION 0.0.6
     DESCRIPTION "Tempo-synced MIDI-triggered stutter effect"
     LANGUAGES C CXX)
 
@@ -81,6 +81,8 @@ target_sources(StutterClone
         Source/PresetBank.cpp
         Source/PresetBank.h
         Source/UiColours.h
+        Source/UpdateChecker.cpp
+        Source/UpdateChecker.h
         Source/WaveformDisplay.cpp
         Source/WaveformDisplay.h)
 
@@ -89,10 +91,16 @@ target_include_directories(StutterClone
         ${CMAKE_CURRENT_SOURCE_DIR}/Source
         ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
+if(UNIX AND NOT APPLE)
+    set(STUTTERCLONE_USE_CURL 1)
+else()
+    set(STUTTERCLONE_USE_CURL 0)
+endif()
+
 target_compile_definitions(StutterClone
     PUBLIC
         JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
+        JUCE_USE_CURL=${STUTTERCLONE_USE_CURL}
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_compile_features(StutterClone PRIVATE cxx_std_20)
