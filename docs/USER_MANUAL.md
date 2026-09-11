@@ -1,6 +1,6 @@
 # StutterClone user manual
 
-Version **0.0.7**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
+Version **0.0.8**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
 
 StutterClone is an **audio effect** triggered by **MIDI**. It is not a synthesizer: it processes the sound that already lives on the track, and a MIDI note from **C3 to B3** decides *when* to stutter and *how*.
 

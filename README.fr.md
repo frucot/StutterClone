@@ -2,9 +2,9 @@
 
 [![Build](https://github.com/frucot/StutterClone/actions/workflows/build.yml/badge.svg)](https://github.com/frucot/StutterClone/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.7-cyan.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.0.8-cyan.svg)](CHANGELOG.md)
 
-**Version 0.0.7** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
+**Version 0.0.8** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
 
 [English](README.md) · [Manuel utilisateur](docs/USER_MANUAL.fr.md) · [User manual](docs/USER_MANUAL.md) · [Guide développeur](docs/DEVELOPER.fr.md) · [Developer guide](docs/DEVELOPER.md)
 
@@ -76,7 +76,7 @@ Presets utilisateur :
 
 ## Versions
 
-La version publique est **0.0.7**. CMake, JUCE et `STUTTERCLONE_VERSION_STRING` utilisent tous `0.0.7`. Ils sont définis dans [`CMakeLists.txt`](CMakeLists.txt) et la chaîne d'affichage est générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
+La version publique est **0.0.8**. CMake, JUCE et `STUTTERCLONE_VERSION_STRING` utilisent tous `0.0.8`. Ils sont définis dans [`CMakeLists.txt`](CMakeLists.txt) et la chaîne d'affichage est générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuer
 

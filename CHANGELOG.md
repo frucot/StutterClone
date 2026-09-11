@@ -3,7 +3,13 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.7`).
+and the public display version now matches the CMake semver (`0.0.8`).
+
+## [0.0.8] - 2026-09-11
+
+### Fixed
+
+- Linux VST3 link: `NEEDS_CURL` so libcurl is linked for the GitHub update check
 
 ## [0.0.7] - 2026-09-11
 

@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Display version may carry a pre-release suffix; CMake/JUCE VERSION stays numeric.
-set(STUTTERCLONE_VERSION_STRING "0.0.7")
+set(STUTTERCLONE_VERSION_STRING "0.0.8")
 
 project(StutterClone
-    VERSION 0.0.7
+    VERSION 0.0.8
     DESCRIPTION "Tempo-synced MIDI-triggered stutter effect"
     LANGUAGES C CXX)
 
@@ -60,6 +60,7 @@ juce_add_plugin(StutterClone
     COPY_PLUGIN_AFTER_BUILD ${STUTTERCLONE_COPY_PLUGIN_AFTER_BUILD}
     AU_MAIN_TYPE kAudioUnitType_MusicEffect
     VST3_CATEGORIES Fx
+    NEEDS_CURL TRUE
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "StutterClone needs microphone access to process live audio in standalone mode.")
 
@@ -93,17 +94,16 @@ target_include_directories(StutterClone
         ${CMAKE_CURRENT_SOURCE_DIR}/Source
         ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-if(UNIX AND NOT APPLE)
-    set(STUTTERCLONE_USE_CURL 1)
-else()
-    set(STUTTERCLONE_USE_CURL 0)
-endif()
-
+# Linux: JUCE sets JUCE_USE_CURL from NEEDS_CURL and links libcurl.
+# macOS/Windows: keep curl off so juce::URL uses the native HTTP stack.
 target_compile_definitions(StutterClone
     PUBLIC
         JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=${STUTTERCLONE_USE_CURL}
         JUCE_VST3_CAN_REPLACE_VST2=0)
+
+if(NOT (UNIX AND NOT APPLE))
+    target_compile_definitions(StutterClone PUBLIC JUCE_USE_CURL=0)
+endif()
 
 target_compile_features(StutterClone PRIVATE cxx_std_20)
 
