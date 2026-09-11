@@ -595,6 +595,7 @@ void StutterCloneAudioProcessor::processFxSlice (juce::AudioBuffer<float>& buffe
 
     GestureDspChain::Settings settings;
     settings.feedEffects = stutterIsOn || fadeOutRemaining > 0;
+    settings.fuzzGain = step.fuzzGain;
     settings.filterOn = step.filterOn;
     settings.filterType = juce::jlimit (0, 2, playingAction.filterType);
     settings.cutoffHz = step.cutoffHz;

@@ -15,6 +15,7 @@ void GestureDspChain::prepare (double sampleRate, int samplesPerBlock, int numCh
         static_cast<juce::uint32> (maxChannels)
     };
 
+    fuzz.prepare (spec);
     filter.prepare (spec);
     filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
     filter.setResonance (0.707f);
@@ -43,6 +44,7 @@ void GestureDspChain::prepare (double sampleRate, int samplesPerBlock, int numCh
 
 void GestureDspChain::reset() noexcept
 {
+    fuzz.reset();
     filter.reset();
     delayLine.reset();
     reverb.reset();
@@ -53,6 +55,7 @@ void GestureDspChain::reset() noexcept
 
 void GestureDspChain::beginGesture() noexcept
 {
+    fuzz.reset();
     filter.reset();
     downsampleHold = 0;
 }
@@ -138,10 +141,16 @@ void GestureDspChain::process (juce::AudioBuffer<float>& buffer,
 
 void GestureDspChain::processScratchSample (int numChannels, float* frame, const Settings& settings) noexcept
 {
+    processFuzz (numChannels, frame, settings);
     processFilter (numChannels, frame, settings);
     processLoFi (numChannels, frame, settings);
     processDelay (numChannels, frame, settings);
     reverbMixSmoothed.skip (1);
+}
+
+void GestureDspChain::processFuzz (int numChannels, float* frame, const Settings& settings) noexcept
+{
+    fuzz.processFrame (numChannels, frame, settings.fuzzGain);
 }
 
 void GestureDspChain::processFilter (int numChannels, float* frame, const Settings& settings) noexcept

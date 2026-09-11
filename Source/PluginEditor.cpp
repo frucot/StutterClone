@@ -171,7 +171,7 @@ namespace
                 "Actions\n"
                 "- Each note has step curves over one 4/4 bar (Division, Reverse, pan, FX).\n"
                 "- Ping-Pong reads that bar forward, then backward (8 beats), then repeats.\n"
-                "- FX chain while a gesture is active: filter -> lo-fi -> delay -> reverb.\n"
+                "- FX chain while a gesture is active: fuzz -> filter -> lo-fi -> delay -> reverb.\n"
                 "\n"
                 "A short click selects the action to edit. Hold the click to play that slot.",
                 false);

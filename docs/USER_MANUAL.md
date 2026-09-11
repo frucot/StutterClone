@@ -1,6 +1,6 @@
 # StutterClone user manual
 
-Version **0.0.6**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
+Version **0.0.7**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
 
 StutterClone is an **audio effect** triggered by **MIDI**. It is not a synthesizer: it processes the sound that already lives on the track, and a MIDI note from **C3 to B3** decides *when* to stutter and *how*.
 
@@ -13,7 +13,7 @@ Incoming audio is always recorded into a short ring buffer (about four seconds).
 1. Waits for the next **Quantize** grid (or starts immediately if Quantize is `None`).
 2. Captures a slice whose length follows the **Division** of that note (tempo-synced).
 3. Replaces the live sound with that looping slice for as long as the note is held.
-4. Reads the note's **action** over one bar in 4/4 (four beats). The action is a set of step curves: stutter division, reverse, pan, filter, lo-fi, delay, and reverb.
+4. Reads the note's **action** over one bar in 4/4 (four beats). The action is a set of step curves: stutter division, reverse, pan, fuzz, filter, lo-fi, delay, and reverb.
 5. Crossfades back to the live signal when you release the note (about 3 ms).
 
 Notes outside C3–B3 are ignored. If several gesture notes are held at once, **the highest note wins**.
@@ -185,6 +185,14 @@ Without the Cut options, delay and reverb can ring out during the short fade bac
 | Reverse | Play the slice backwards |
 | Alt Pan | Alternate the stutter between left and right (the switch is smoothed to avoid clicks) |
 
+### Fuzz
+
+Runs on the stuttered slice, before Filter. **0% = dry** (no colour, no level change).
+
+| Lane | Role |
+| --- | --- |
+| Gain | Adaptive two-band saturation: round wavefold below ~250 Hz, germanium-style grit above. Smoothed so 16th-note steps do not click |
+
 ### Filter
 
 The **Filter** menu next to the group title is the type for this note: **Lowpass**, **Highpass**, or **Bandpass**.
@@ -222,7 +230,7 @@ The **Delay** menu next to the group title is the synced delay time: **1/4**, **
 | Size | Room size |
 | Damping | High-frequency damping |
 
-The FX chain is **filter → lo-fi → delay → reverb**, and it runs only while a gesture (or its fade-out) is active.
+The FX chain is **fuzz → filter → lo-fi → delay → reverb**, and it runs only while a gesture (or its fade-out) is active.
 
 ## Performance tips
 

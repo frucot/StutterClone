@@ -3,7 +3,13 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.6`).
+and the public display version now matches the CMake semver (`0.0.7`).
+
+## [0.0.7] - 2026-09-11
+
+### Added
+
+- Adaptive fuzz after the stutter loop (Gain lane, 0% = dry, unity output level): low-band wavefold + high-band germanium-style saturation
 
 ## [0.0.6] - 2026-09-11
 

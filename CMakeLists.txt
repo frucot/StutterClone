@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Display version may carry a pre-release suffix; CMake/JUCE VERSION stays numeric.
-set(STUTTERCLONE_VERSION_STRING "0.0.6")
+set(STUTTERCLONE_VERSION_STRING "0.0.7")
 
 project(StutterClone
-    VERSION 0.0.6
+    VERSION 0.0.7
     DESCRIPTION "Tempo-synced MIDI-triggered stutter effect"
     LANGUAGES C CXX)
 
@@ -68,6 +68,8 @@ target_sources(StutterClone
         Source/Action.h
         Source/ActionEditor.cpp
         Source/ActionEditor.h
+        Source/AdaptiveFuzzDSP.cpp
+        Source/AdaptiveFuzzDSP.h
         Source/CurveLane.cpp
         Source/CurveLane.h
         Source/DspChain.cpp

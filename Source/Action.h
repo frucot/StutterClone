@@ -95,6 +95,7 @@ namespace stutter
         Division = 0,
         Reverse,
         AltPan,
+        FuzzGain,
         FilterOn,
         FilterCutoff,
         FilterResonance,
@@ -120,17 +121,18 @@ namespace stutter
         int count;
     };
 
-    constexpr int numLaneGroups = 5;
-    constexpr int leftColumnGroups = 3;
-    constexpr int filterGroupIndex = 1;
-    constexpr int delayGroupIndex = 3;
+    constexpr int numLaneGroups = 6;
+    constexpr int leftColumnGroups = 4;
+    constexpr int filterGroupIndex = 2;
+    constexpr int delayGroupIndex = 4;
 
     constexpr LaneGroup laneGroups[numLaneGroups] {
         { "Stutter", 0,  3 },
-        { "Filter",  3,  3 },
-        { "Lo-Fi",   6,  3 },
-        { "Delay",   9,  3 },
-        { "Reverb",  12, 4 }
+        { "Fuzz",    3,  1 },
+        { "Filter",  4,  3 },
+        { "Lo-Fi",   7,  3 },
+        { "Delay",   10, 3 },
+        { "Reverb",  13, 4 }
     };
 
     inline int clampFirstGestureNote (int firstNote) noexcept
@@ -376,6 +378,7 @@ namespace stutter
         fillCurve (action, Curve::Division, divisionToNorm (div1_16));
         fillCurve (action, Curve::Reverse, 0.0f);
         fillCurve (action, Curve::AltPan, 0.0f);
+        fillCurve (action, Curve::FuzzGain, 0.0f);
         fillCurve (action, Curve::FilterOn, 0.0f);
         fillCurve (action, Curve::FilterCutoff, cutoffNormFromHz (12000.0f));
         fillCurve (action, Curve::FilterResonance, resonanceToNorm (0.707f));
@@ -449,6 +452,7 @@ namespace stutter
         int divisionIndex = div1_16;
         bool reverse = false;
         bool altPan = false;
+        float fuzzGain = 0.0f;
         bool filterOn = false;
         float cutoffHz = 12000.0f;
         float resonance = 0.707f;
@@ -476,6 +480,7 @@ namespace stutter
         out.divisionIndex = divisionFromNorm (at (Curve::Division));
         out.reverse = gateFromNorm (at (Curve::Reverse));
         out.altPan = gateFromNorm (at (Curve::AltPan));
+        out.fuzzGain = juce::jlimit (0.0f, 1.0f, at (Curve::FuzzGain));
         out.filterOn = gateFromNorm (at (Curve::FilterOn));
         out.cutoffHz = cutoffHzFromNorm (at (Curve::FilterCutoff));
         out.resonance = resonanceFromNorm (at (Curve::FilterResonance));
@@ -499,6 +504,7 @@ namespace stutter
             case Curve::Division:        return "Division";
             case Curve::Reverse:         return "Reverse";
             case Curve::AltPan:          return "Alt Pan";
+            case Curve::FuzzGain:        return "Gain";
             case Curve::FilterOn:        return "Filter On";
             case Curve::FilterCutoff:    return "Cutoff";
             case Curve::FilterResonance: return "Resonance";

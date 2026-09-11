@@ -1,6 +1,6 @@
 # Manuel utilisateur StutterClone
 
-Version **0.0.6**. English: [USER_MANUAL.md](USER_MANUAL.md).
+Version **0.0.7**. English: [USER_MANUAL.md](USER_MANUAL.md).
 
 StutterClone est un **effet audio** déclenché par **MIDI**. Ce n'est pas un synthétiseur : il traite le son déjà présent sur la piste, et une note MIDI de **C3 à B3** décide *quand* stutter et *comment*.
 
@@ -13,7 +13,7 @@ L'audio entrant est toujours enregistré dans un buffer circulaire (environ quat
 1. Attend la prochaine grille **Quantize** (ou démarre tout de suite si Quantize = `None`).
 2. Capture un fragment dont la longueur suit la **Division** de cette note (synchronisée au tempo).
 3. Remplace le son live par cette boucle tant que la note est tenue.
-4. Lit l'**action** de la note sur une mesure en 4/4 (quatre temps). L'action est un jeu de courbes en pas : division du stutter, reverse, pan, filtre, lo-fi, delay et reverb.
+4. Lit l'**action** de la note sur une mesure en 4/4 (quatre temps). L'action est un jeu de courbes en pas : division du stutter, reverse, pan, fuzz, filtre, lo-fi, delay et reverb.
 5. Recroise vers le signal live à la relâche de la note (environ 3 ms).
 
 Les notes hors C3–B3 sont ignorées. Si plusieurs notes de geste sont tenues en même temps, **la plus aiguë gagne**.
@@ -185,6 +185,14 @@ Sans les options Cut, delay et reverb peuvent encore sonner pendant le court fon
 | Reverse | Lire le fragment à l'envers |
 | Alt Pan | Alterner le stutter gauche / droite (le bascule est lissé pour éviter les clics) |
 
+### Fuzz
+
+S'applique au fragment stutteré, avant le Filter. **0 % = dry** (pas de coloration ni de perte de niveau).
+
+| Lane | Rôle |
+| --- | --- |
+| Gain | Saturation adaptative deux bandes : wavefold rond sous ~250 Hz, grain type germanium au-dessus. Lissé pour que les pas en 1/16 ne cliquent pas |
+
 ### Filter
 
 Le menu **Filter** à côté du titre du groupe est le type pour cette note : **Lowpass**, **Highpass** ou **Bandpass**.
@@ -222,7 +230,7 @@ Le menu **Delay** à côté du titre du groupe est le temps de delay synchronis�
 | Size | Taille de pièce |
 | Damping | Amortissement des aigus |
 
-La chaîne d'effets est **filtre → lo-fi → delay → reverb**, et elle ne tourne que pendant un geste (ou son fade-out).
+La chaîne d'effets est **fuzz → filtre → lo-fi → delay → reverb**, et elle ne tourne que pendant un geste (ou son fade-out).
 
 ## Conseils de jeu
 

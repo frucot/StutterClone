@@ -3,9 +3,9 @@
 
 namespace
 {
-    constexpr int laneHeight = 52;
-    constexpr int gateLaneHeight = 22;
-    constexpr int groupHeaderHeight = 24;
+    constexpr int laneHeight = 44;
+    constexpr int gateLaneHeight = 18;
+    constexpr int groupHeaderHeight = 22;
     constexpr int columnGap = 10;
 
     int lanesContentHeight() noexcept
@@ -22,10 +22,10 @@ namespace
             for (int i = 0; i < stutter::laneGroups[g].count; ++i, ++curveIndex)
             {
                 const auto curve = static_cast<stutter::Curve> (curveIndex);
-                y += (stutter::isGateCurve (curve) ? gateLaneHeight : laneHeight) + 4;
+                y += (stutter::isGateCurve (curve) ? gateLaneHeight : laneHeight) + 3;
             }
 
-            y += 6;
+            y += 4;
         }
 
         return juce::jmax (yLeft, yRight);
@@ -262,10 +262,10 @@ void ActionEditor::resized()
             const auto curve = static_cast<stutter::Curve> (curveIndex);
             const int height = stutter::isGateCurve (curve) ? gateLaneHeight : laneHeight;
             lanes[static_cast<size_t> (curveIndex)]->setBounds (x, y, colW, height);
-            y += height + 4;
+            y += height + 3;
         }
 
-        y += 6;
+        y += 4;
     }
 
     lanesContainer.setBounds (0, 0, availableW, juce::jmax (yLeft, yRight));

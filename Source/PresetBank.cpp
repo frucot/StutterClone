@@ -13,6 +13,7 @@ namespace
             case stutter::Curve::Division:        return "division";
             case stutter::Curve::Reverse:         return "reverse";
             case stutter::Curve::AltPan:          return "altPan";
+            case stutter::Curve::FuzzGain:        return "fuzzGain";
             case stutter::Curve::FilterOn:        return "filterOn";
             case stutter::Curve::FilterCutoff:    return "cutoff";
             case stutter::Curve::FilterResonance: return "resonance";
