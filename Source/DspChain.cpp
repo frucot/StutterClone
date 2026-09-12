@@ -15,6 +15,8 @@ void GestureDspChain::prepare (double sampleRate, int samplesPerBlock, int numCh
         static_cast<juce::uint32> (maxChannels)
     };
 
+    granular.prepare (spec);
+    resonator.prepare (spec);
     fuzz.prepare (spec);
     filter.prepare (spec);
     filter.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
@@ -40,10 +42,13 @@ void GestureDspChain::prepare (double sampleRate, int samplesPerBlock, int numCh
     downsampleHold = 0;
     heldSample.fill (0.0f);
     lastFilterType = 0;
+    lastPitchEngine = -1;
 }
 
 void GestureDspChain::reset() noexcept
 {
+    granular.reset();
+    resonator.reset();
     fuzz.reset();
     filter.reset();
     delayLine.reset();
@@ -51,10 +56,13 @@ void GestureDspChain::reset() noexcept
     downsampleHold = 0;
     heldSample.fill (0.0f);
     scratch.clear();
+    lastPitchEngine = -1;
 }
 
 void GestureDspChain::beginGesture() noexcept
 {
+    granular.beginGesture();
+    resonator.beginGesture();
     fuzz.reset();
     filter.reset();
     downsampleHold = 0;
@@ -141,11 +149,38 @@ void GestureDspChain::process (juce::AudioBuffer<float>& buffer,
 
 void GestureDspChain::processScratchSample (int numChannels, float* frame, const Settings& settings) noexcept
 {
+    processGranular (numChannels, frame, settings);
     processFuzz (numChannels, frame, settings);
     processFilter (numChannels, frame, settings);
     processLoFi (numChannels, frame, settings);
     processDelay (numChannels, frame, settings);
     reverbMixSmoothed.skip (1);
+}
+
+void GestureDspChain::processGranular (int numChannels, float* frame, const Settings& settings) noexcept
+{
+    const int engine = juce::jlimit (0, 1, settings.granularEngine);
+
+    if (engine != lastPitchEngine)
+    {
+        granular.beginGesture();
+        resonator.beginGesture();
+        lastPitchEngine = engine;
+    }
+
+    if (engine == 1)
+    {
+        resonator.processFrame (numChannels, frame,
+                                settings.feedEffects && settings.granularOn,
+                                settings.granularMidiNote,
+                                settings.granularMix);
+        return;
+    }
+
+    if (! settings.feedEffects)
+        return;
+
+    granular.processFrame (numChannels, frame, settings.granularOn, settings.granularMidiNote, settings.granularMix);
 }
 
 void GestureDspChain::processFuzz (int numChannels, float* frame, const Settings& settings) noexcept

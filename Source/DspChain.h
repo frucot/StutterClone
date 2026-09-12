@@ -1,6 +1,8 @@
 #pragma once
 
 #include "AdaptiveFuzzDSP.h"
+#include "GranularTunerDSP.h"
+#include "ResonatorDSP.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -14,6 +16,11 @@ public:
     struct Settings
     {
         bool feedEffects = false;
+
+        bool granularOn = false;
+        int granularMidiNote = 60;
+        float granularMix = 1.0f;
+        int granularEngine = 0;
 
         float fuzzGain = 0.0f;
 
@@ -44,18 +51,21 @@ public:
     void resetReverb() noexcept;
     void process (juce::AudioBuffer<float>& buffer, int startSample, int numSamples, const Settings& settings) noexcept;
 
-    // Ordered FX stages: fuzz -> filter -> lo-fi -> delay -> reverb.
+    // Ordered FX stages: grain -> fuzz -> filter -> lo-fi -> delay -> reverb.
     // To add a module: Settings fields, a process* stage here, Curve + EvaluatedStep,
     // XML id in PresetBank, and a row in stutter::laneGroups.
 
 private:
     void processScratchSample (int numChannels, float* frame, const Settings& settings) noexcept;
+    void processGranular (int numChannels, float* frame, const Settings& settings) noexcept;
     void processFuzz (int numChannels, float* frame, const Settings& settings) noexcept;
     void processFilter (int numChannels, float* frame, const Settings& settings) noexcept;
     void processLoFi (int numChannels, float* frame, const Settings& settings) noexcept;
     void processDelay (int numChannels, float* frame, const Settings& settings) noexcept;
     void processReverb (int numChannels, int numSamples, const Settings& settings) noexcept;
 
+    GranularTunerDSP granular;
+    ResonatorDSP resonator;
     AdaptiveFuzzDSP fuzz;
     juce::dsp::StateVariableTPTFilter<float> filter;
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayLine;
@@ -70,6 +80,7 @@ private:
     int downsampleHold = 0;
     std::array<float, 8> heldSample {};
     int lastFilterType = -1;
+    int lastPitchEngine = -1;
     double currentSampleRate = 44100.0;
     int maxDelaySamples = 1;
 

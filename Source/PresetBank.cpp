@@ -13,6 +13,8 @@ namespace
             case stutter::Curve::Division:        return "division";
             case stutter::Curve::Reverse:         return "reverse";
             case stutter::Curve::AltPan:          return "altPan";
+            case stutter::Curve::GranularOn:      return "granularOn";
+            case stutter::Curve::GranularNote:    return "granularNote";
             case stutter::Curve::FuzzGain:        return "fuzzGain";
             case stutter::Curve::FilterOn:        return "filterOn";
             case stutter::Curve::FilterCutoff:    return "cutoff";
@@ -45,6 +47,10 @@ namespace
         tree.setProperty ("loopUnfreeze", action.loopUnfreeze != 0, nullptr);
         tree.setProperty ("loopPeriod", action.loopPeriod, nullptr);
         tree.setProperty ("pingPong", action.pingPong != 0, nullptr);
+        tree.setProperty ("granularRoot", action.granularRoot, nullptr);
+        tree.setProperty ("granularScale", action.granularScale, nullptr);
+        tree.setProperty ("granularEngine", action.granularEngine, nullptr);
+        tree.setProperty ("granularMix", action.granularMix, nullptr);
         tree.setProperty ("divTable", stutter::currentDivTable, nullptr);
 
         for (int c = 0; c < stutter::numCurves; ++c)
@@ -83,6 +89,10 @@ namespace
         action.loopUnfreeze = static_cast<bool> (tree.getProperty ("loopUnfreeze", false)) ? 1 : 0;
         action.loopPeriod = juce::jlimit (0, stutter::numLoopPeriods - 1, static_cast<int> (tree.getProperty ("loopPeriod", 3)));
         action.pingPong = static_cast<bool> (tree.getProperty ("pingPong", false)) ? 1 : 0;
+        action.granularRoot = stutter::clampRootIndex (static_cast<int> (tree.getProperty ("granularRoot", 0)));
+        action.granularScale = stutter::clampScaleIndex (static_cast<int> (tree.getProperty ("granularScale", 0)));
+        action.granularEngine = stutter::clampPitchEngine (static_cast<int> (tree.getProperty ("granularEngine", 0)));
+        action.granularMix = juce::jlimit (0.0f, 1.0f, static_cast<float> (tree.getProperty ("granularMix", 1.0f)));
         const int divTable = juce::jlimit (1, stutter::currentDivTable,
                                            static_cast<int> (tree.getProperty ("divTable", fallbackDivTable)));
 

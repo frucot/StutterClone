@@ -63,6 +63,55 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
         commitAction();
     };
 
+    for (int i = 0; i < stutter::numPitchEngines; ++i)
+        granularEngineBox.addItem (stutter::pitchEngineNames[i], i + 1);
+
+    styleCombo (granularEngineBox);
+    lanesContainer.addAndMakeVisible (granularEngineBox);
+    granularEngineBox.onChange = [this]
+    {
+        localAction.granularEngine = stutter::clampPitchEngine (granularEngineBox.getSelectedItemIndex());
+        commitAction();
+    };
+
+    for (int i = 0; i < stutter::numPitchClasses; ++i)
+        granularRootBox.addItem (stutter::pitchClassNames[i], i + 1);
+
+    styleCombo (granularRootBox);
+    lanesContainer.addAndMakeVisible (granularRootBox);
+    granularRootBox.onChange = [this]
+    {
+        localAction.granularRoot = stutter::clampRootIndex (granularRootBox.getSelectedItemIndex());
+        commitAction();
+        repaint();
+    };
+
+    for (int i = 0; i < stutter::numScales; ++i)
+        granularScaleBox.addItem (stutter::scales[static_cast<size_t> (i)].name, i + 1);
+
+    styleCombo (granularScaleBox);
+    lanesContainer.addAndMakeVisible (granularScaleBox);
+    granularScaleBox.onChange = [this]
+    {
+        localAction.granularScale = stutter::clampScaleIndex (granularScaleBox.getSelectedItemIndex());
+        commitAction();
+        repaint();
+    };
+
+    granularMixSlider.setRange (0.0, 1.0, 0.01);
+    granularMixSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    granularMixSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    granularMixSlider.setColour (juce::Slider::backgroundColourId, UiColours::panel);
+    granularMixSlider.setColour (juce::Slider::trackColourId, UiColours::accent);
+    granularMixSlider.setColour (juce::Slider::thumbColourId, UiColours::text);
+    granularMixSlider.setTooltip ("Mix");
+    lanesContainer.addAndMakeVisible (granularMixSlider);
+    granularMixSlider.onValueChange = [this]
+    {
+        localAction.granularMix = juce::jlimit (0.0f, 1.0f, static_cast<float> (granularMixSlider.getValue()));
+        commitAction();
+    };
+
     delayDivBox.addItemList (juce::StringArray { "1/4", "1/8", "1/16", "1/32" }, 1);
     styleCombo (delayDivBox);
     lanesContainer.addAndMakeVisible (delayDivBox);
@@ -124,6 +173,8 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
         lanesContainer.addAndMakeVisible (groupLabels[i]);
     }
 
+    groupLabels[static_cast<size_t> (stutter::grainGroupIndex)].setVisible (false);
+
     for (int i = 0; i < stutter::numCurves; ++i)
     {
         lanes[static_cast<size_t> (i)] = std::make_unique<CurveLane>();
@@ -133,6 +184,10 @@ ActionEditor::ActionEditor (StutterCloneAudioProcessor& p)
 
     filterTypeBox.toFront (false);
     delayDivBox.toFront (false);
+    granularEngineBox.toFront (false);
+    granularRootBox.toFront (false);
+    granularScaleBox.toFront (false);
+    granularMixSlider.toFront (false);
 
     viewport.setViewedComponent (&lanesContainer, false);
     viewport.setScrollBarsShown (true, false);
@@ -183,6 +238,12 @@ void ActionEditor::reloadFromProcessor()
     unfreezeButton.setToggleState (localAction.loopUnfreeze != 0, juce::dontSendNotification);
     loopPeriodBox.setEnabled (localAction.loopUnfreeze != 0);
     pingPongButton.setToggleState (localAction.pingPong != 0, juce::dontSendNotification);
+    granularEngineBox.setSelectedItemIndex (stutter::clampPitchEngine (localAction.granularEngine),
+                                            juce::dontSendNotification);
+    granularRootBox.setSelectedItemIndex (stutter::clampRootIndex (localAction.granularRoot), juce::dontSendNotification);
+    granularScaleBox.setSelectedItemIndex (stutter::clampScaleIndex (localAction.granularScale), juce::dontSendNotification);
+    granularMixSlider.setValue (juce::jlimit (0.0, 1.0, static_cast<double> (localAction.granularMix)),
+                                juce::dontSendNotification);
 
     for (int i = 0; i < stutter::numCurves; ++i)
         lanes[static_cast<size_t> (i)]->setAction (&localAction, static_cast<stutter::Curve> (i));
@@ -242,12 +303,29 @@ void ActionEditor::resized()
         const int titleW = juce::jmin (colW,
             juce::GlyphArrangement::getStringWidthInt (headerFont, stutter::laneGroups[g].title) + 8);
 
-        groupLabels[g].setBounds (x, y, titleW, groupHeaderHeight);
+        if (g == static_cast<size_t> (stutter::grainGroupIndex))
+            groupLabels[g].setBounds ({});
+        else
+            groupLabels[g].setBounds (x, y, titleW, groupHeaderHeight);
 
         if (g == static_cast<size_t> (stutter::filterGroupIndex))
         {
             const int comboW = juce::jlimit (titleW, colW - titleW - 4, titleW + 52);
             filterTypeBox.setBounds (x + titleW, y, comboW, groupHeaderHeight);
+        }
+        else if (g == static_cast<size_t> (stutter::grainGroupIndex))
+        {
+            constexpr int engineW = 92;
+            granularEngineBox.setBounds (x, y, juce::jmin (engineW, colW), groupHeaderHeight);
+            auto rest = juce::Rectangle<int> (x + juce::jmin (engineW, colW) + 2, y,
+                                              juce::jmax (0, colW - juce::jmin (engineW, colW) - 2),
+                                              groupHeaderHeight);
+            granularRootBox.setBounds (rest.removeFromLeft (juce::jmin (44, rest.getWidth())));
+            rest.removeFromLeft (2);
+            const int scaleW = juce::jmin (80, juce::jmax (0, rest.getWidth() - 52));
+            granularScaleBox.setBounds (rest.removeFromLeft (scaleW));
+            rest.removeFromLeft (4);
+            granularMixSlider.setBounds (rest);
         }
         else if (g == static_cast<size_t> (stutter::delayGroupIndex))
         {

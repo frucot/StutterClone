@@ -2,15 +2,15 @@
 
 [![Build](https://github.com/frucot/StutterClone/actions/workflows/build.yml/badge.svg)](https://github.com/frucot/StutterClone/actions/workflows/build.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.0.8-cyan.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.0.9-cyan.svg)](CHANGELOG.md)
 
-**Version 0.0.8** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
+**Version 0.0.9** — effet stutter / glitch déclenché par MIDI, synchronisé au tempo, en VST3, AU et standalone.
 
 [English](README.md) · [Manuel utilisateur](docs/USER_MANUAL.fr.md) · [User manual](docs/USER_MANUAL.md) · [Guide développeur](docs/DEVELOPER.fr.md) · [Developer guide](docs/DEVELOPER.md)
 
 ## Présentation
 
-StutterClone est un effet audio open source construit avec [JUCE](https://juce.com) 8. En maintenant une note MIDI de **C3 à B3**, le plugin capture l'audio en direct dans une boucle dont la longueur suit le tempo de l'hôte. Chacune des douze notes a sa propre **action** : des courbes en pas (4 / 8 / 16 / 32 sur une mesure) qui pilotent la division du stutter, le reverse, le pan, le filtre, le lo-fi, le delay et la reverb.
+StutterClone est un effet audio open source construit avec [JUCE](https://juce.com) 8. En maintenant une note MIDI de **C3 à B3**, le plugin capture l'audio en direct dans une boucle dont la longueur suit le tempo de l'hôte. Chacune des douze notes a sa propre **action** : des courbes en pas (4 / 8 / 16 / 32 sur une mesure) qui pilotent la division du stutter, le reverse, le pan, le grain, le filtre, le lo-fi, le delay et la reverb.
 
 L'ensemble des douze actions forme un **preset**, enregistrable et rappelable depuis le plugin.
 
@@ -76,7 +76,7 @@ Presets utilisateur :
 
 ## Versions
 
-La version publique est **0.0.8**. CMake, JUCE et `STUTTERCLONE_VERSION_STRING` utilisent tous `0.0.8`. Ils sont définis dans [`CMakeLists.txt`](CMakeLists.txt) et la chaîne d'affichage est générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
+La version publique est **0.0.9**. CMake, JUCE et `STUTTERCLONE_VERSION_STRING` utilisent tous `0.0.9`. Ils sont définis dans [`CMakeLists.txt`](CMakeLists.txt) et la chaîne d'affichage est générée dans `Version.h`. Modifier les deux au même moment pour une release. Voir [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuer
 

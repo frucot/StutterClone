@@ -1,6 +1,6 @@
 # StutterClone user manual
 
-Version **0.0.8**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
+Version **0.0.9**. Guide en français : [USER_MANUAL.fr.md](USER_MANUAL.fr.md).
 
 StutterClone is an **audio effect** triggered by **MIDI**. It is not a synthesizer: it processes the sound that already lives on the track, and a MIDI note from **C3 to B3** decides *when* to stutter and *how*.
 
@@ -13,7 +13,7 @@ Incoming audio is always recorded into a short ring buffer (about four seconds).
 1. Waits for the next **Quantize** grid (or starts immediately if Quantize is `None`).
 2. Captures a slice whose length follows the **Division** of that note (tempo-synced).
 3. Replaces the live sound with that looping slice for as long as the note is held.
-4. Reads the note's **action** over one bar in 4/4 (four beats). The action is a set of step curves: stutter division, reverse, pan, fuzz, filter, lo-fi, delay, and reverb.
+4. Reads the note's **action** over one bar in 4/4 (four beats). The action is a set of step curves: stutter division, reverse, pan, grain, fuzz, filter, lo-fi, delay, and reverb.
 5. Crossfades back to the live signal when you release the note (about 3 ms).
 
 Notes outside C3–B3 are ignored. If several gesture notes are held at once, **the highest note wins**.
@@ -185,9 +185,18 @@ Without the Cut options, delay and reverb can ring out during the short fade bac
 | Reverse | Play the slice backwards |
 | Alt Pan | Alternate the stutter between left and right (the switch is smoothed to avoid clicks) |
 
+### Grain
+
+Runs on the stuttered slice, before Fuzz. The header menu selects **Grain** (frozen period-locked loop) or **Resonator** (comb filter at 1/f0). Same **root**, **scale**, and **Mix** (this module only). Off or Mix 0% = dry.
+
+| Lane | Role |
+| --- | --- |
+| Grain On | Enable the selected engine on that step |
+| Note | Scale degree (labels follow the chosen root and scale) |
+
 ### Fuzz
 
-Runs on the stuttered slice, before Filter. **0% = dry** (no colour, no level change).
+Runs after Grain, before Filter. **0% = dry** (no colour, no level change).
 
 | Lane | Role |
 | --- | --- |
@@ -230,7 +239,7 @@ The **Delay** menu next to the group title is the synced delay time: **1/4**, **
 | Size | Room size |
 | Damping | High-frequency damping |
 
-The FX chain is **fuzz → filter → lo-fi → delay → reverb**, and it runs only while a gesture (or its fade-out) is active.
+The FX chain is **grain → fuzz → filter → lo-fi → delay → reverb**, and it runs only while a gesture (or its fade-out) is active.
 
 ## Performance tips
 
@@ -246,7 +255,7 @@ The FX chain is **fuzz → filter → lo-fi → delay → reverb**, and it runs 
 | --- | --- |
 | No stutter, header stays Inactive | MIDI is not reaching the plugin, or notes are outside the current Octave window |
 | Pending forever | Transport may be stopped, or Quantize never reaches the next grid. Try `None` |
-| Stutter is dry / no FX | Filter On, Lo-Fi On, Delay On, Reverb On are off on those steps |
+| Stutter is dry / no FX | Grain On, Filter On, Lo-Fi On, Delay On, Reverb On are off on those steps |
 | Delay or reverb hangs after release | Enable Delay Cut / Reverb Cut on that action |
 | Host window is tiny / lanes scrolled | Expand **Editor**; the window should grow to show every lane. Reload the plugin if the DAW cached an old size |
 | AU has no MIDI pin | Use the AU build (Music Effect). Some hosts only expose MIDI on VST3 |

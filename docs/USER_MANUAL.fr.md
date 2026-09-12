@@ -1,6 +1,6 @@
 # Manuel utilisateur StutterClone
 
-Version **0.0.8**. English: [USER_MANUAL.md](USER_MANUAL.md).
+Version **0.0.9**. English: [USER_MANUAL.md](USER_MANUAL.md).
 
 StutterClone est un **effet audio** déclenché par **MIDI**. Ce n'est pas un synthétiseur : il traite le son déjà présent sur la piste, et une note MIDI de **C3 à B3** décide *quand* stutter et *comment*.
 
@@ -13,7 +13,7 @@ L'audio entrant est toujours enregistré dans un buffer circulaire (environ quat
 1. Attend la prochaine grille **Quantize** (ou démarre tout de suite si Quantize = `None`).
 2. Capture un fragment dont la longueur suit la **Division** de cette note (synchronisée au tempo).
 3. Remplace le son live par cette boucle tant que la note est tenue.
-4. Lit l'**action** de la note sur une mesure en 4/4 (quatre temps). L'action est un jeu de courbes en pas : division du stutter, reverse, pan, fuzz, filtre, lo-fi, delay et reverb.
+4. Lit l'**action** de la note sur une mesure en 4/4 (quatre temps). L'action est un jeu de courbes en pas : division du stutter, reverse, pan, grain, fuzz, filtre, lo-fi, delay et reverb.
 5. Recroise vers le signal live à la relâche de la note (environ 3 ms).
 
 Les notes hors C3–B3 sont ignorées. Si plusieurs notes de geste sont tenues en même temps, **la plus aiguë gagne**.
@@ -185,9 +185,18 @@ Sans les options Cut, delay et reverb peuvent encore sonner pendant le court fon
 | Reverse | Lire le fragment à l'envers |
 | Alt Pan | Alterner le stutter gauche / droite (le bascule est lissé pour éviter les clics) |
 
+### Grain
+
+S'applique au fragment stutteré, avant le Fuzz. Le menu d'en-tête choisit **Grain** (boucle figée à la période de la note) ou **Resonator** (filtre en peigne à 1/f0). Mêmes **fondamentale**, **gamme** et **Mix** (ce module seulement). Off ou Mix 0 % = dry.
+
+| Lane | Rôle |
+| --- | --- |
+| Grain On | Activer le moteur choisi sur ce pas |
+| Note | Degré de la gamme (les libellés suivent fondamentale et gamme) |
+
 ### Fuzz
 
-S'applique au fragment stutteré, avant le Filter. **0 % = dry** (pas de coloration ni de perte de niveau).
+S'applique après le Grain, avant le Filter. **0 % = dry** (pas de coloration ni de perte de niveau).
 
 | Lane | Rôle |
 | --- | --- |
@@ -230,7 +239,7 @@ Le menu **Delay** à côté du titre du groupe est le temps de delay synchronis�
 | Size | Taille de pièce |
 | Damping | Amortissement des aigus |
 
-La chaîne d'effets est **fuzz → filtre → lo-fi → delay → reverb**, et elle ne tourne que pendant un geste (ou son fade-out).
+La chaîne d'effets est **grain → fuzz → filtre → lo-fi → delay → reverb**, et elle ne tourne que pendant un geste (ou son fade-out).
 
 ## Conseils de jeu
 
@@ -246,7 +255,7 @@ La chaîne d'effets est **fuzz → filtre → lo-fi → delay → reverb**, et e
 | --- | --- |
 | Pas de stutter, en-tête Inactive | Le MIDI n'arrive pas au plugin, ou les notes sont hors de la fenêtre Octave courante |
 | Pending sans fin | Transport arrêté, ou la grille Quantize n'est jamais atteinte. Essayer `None` |
-| Stutter sans FX | Filter On, Lo-Fi On, Delay On, Reverb On sont off sur ces pas |
+| Stutter sans FX | Grain On, Filter On, Lo-Fi On, Delay On, Reverb On sont off sur ces pas |
 | Delay ou reverb qui traîne après la relâche | Activer Delay Cut / Reverb Cut sur cette action |
 | Fenêtre trop petite / lanes à scroller | Déplier **Editor** ; la fenêtre doit grandir pour tout montrer. Recharger le plugin si le DAW a mémorisé une ancienne taille |
 | L'AU n'a pas d'entrée MIDI | Utiliser le build AU (Music Effect). Certains hôtes n'exposent le MIDI que sur le VST3 |

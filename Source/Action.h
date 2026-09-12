@@ -80,6 +80,42 @@ namespace stutter
 
     constexpr const char* delayDivisionNames[] { "1/4", "1/8", "1/16", "1/32" };
 
+    constexpr int numPitchClasses = 12;
+    constexpr int numScales = 7;
+    constexpr int maxScaleDegrees = 13;
+    constexpr int granularBaseMidi = 60; // C3
+    constexpr int minGranularMidi = 24;
+    constexpr int maxGranularMidi = 96;
+    constexpr int numPitchEngines = 2;
+    constexpr int pitchEngineGrain = 0;
+    constexpr int pitchEngineResonator = 1;
+
+    constexpr const char* pitchEngineNames[numPitchEngines] {
+        "Grain", "Resonator"
+    };
+
+    constexpr const char* pitchClassNames[numPitchClasses] {
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+
+    struct ScaleInfo
+    {
+        const char* name;
+        int count;
+        int intervals[maxScaleDegrees];
+    };
+
+    // Last interval is the octave so the lane can land on the tonic above.
+    constexpr ScaleInfo scales[numScales] {
+        { "Major",      8,  { 0, 2, 4, 5, 7,  9, 11, 12 } },
+        { "Minor",      8,  { 0, 2, 3, 5, 7,  8, 10, 12 } },
+        { "Harm. Min",  8,  { 0, 2, 3, 5, 7,  8, 11, 12 } },
+        { "Dorian",     8,  { 0, 2, 3, 5, 7,  9, 10, 12 } },
+        { "Penta Maj",  6,  { 0, 2, 4, 7, 9, 12 } },
+        { "Penta Min",  6,  { 0, 3, 5, 7, 10, 12 } },
+        { "Chromatic",  13, { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 } }
+    };
+
     constexpr int numLoopPeriods = 5;
 
     constexpr const char* loopPeriodNames[numLoopPeriods] {
@@ -95,6 +131,8 @@ namespace stutter
         Division = 0,
         Reverse,
         AltPan,
+        GranularOn,
+        GranularNote,
         FuzzGain,
         FilterOn,
         FilterCutoff,
@@ -121,19 +159,23 @@ namespace stutter
         int count;
     };
 
-    constexpr int numLaneGroups = 6;
+    constexpr int numLaneGroups = 7;
     constexpr int leftColumnGroups = 4;
-    constexpr int filterGroupIndex = 2;
-    constexpr int delayGroupIndex = 4;
+    constexpr int grainGroupIndex = 1;
+    constexpr int filterGroupIndex = 3;
+    constexpr int delayGroupIndex = 5;
 
     constexpr LaneGroup laneGroups[numLaneGroups] {
         { "Stutter", 0,  3 },
-        { "Fuzz",    3,  1 },
-        { "Filter",  4,  3 },
-        { "Lo-Fi",   7,  3 },
-        { "Delay",   10, 3 },
-        { "Reverb",  13, 4 }
+        { "Grain",   3,  2 },
+        { "Fuzz",    5,  1 },
+        { "Filter",  6,  3 },
+        { "Lo-Fi",   9,  3 },
+        { "Delay",   12, 3 },
+        { "Reverb",  15, 4 }
     };
+
+    static_assert (numCurves == 19);
 
     inline int clampFirstGestureNote (int firstNote) noexcept
     {
@@ -288,6 +330,54 @@ namespace stutter
         return norm >= 0.5f;
     }
 
+    inline int clampRootIndex (int index) noexcept
+    {
+        return juce::jlimit (0, numPitchClasses - 1, index);
+    }
+
+    inline int clampScaleIndex (int index) noexcept
+    {
+        return juce::jlimit (0, numScales - 1, index);
+    }
+
+    inline int clampPitchEngine (int index) noexcept
+    {
+        return juce::jlimit (0, numPitchEngines - 1, index);
+    }
+
+    inline int scaleDegreeCount (int scaleIndex) noexcept
+    {
+        return scales[static_cast<size_t> (clampScaleIndex (scaleIndex))].count;
+    }
+
+    inline int degreeFromNorm (float norm, int scaleIndex) noexcept
+    {
+        const int n = juce::jmax (2, scaleDegreeCount (scaleIndex));
+        return juce::jlimit (0, n - 1,
+                             juce::roundToInt (juce::jlimit (0.0f, 1.0f, norm) * static_cast<float> (n - 1)));
+    }
+
+    inline float degreeToNorm (int degree, int scaleIndex) noexcept
+    {
+        const int n = juce::jmax (2, scaleDegreeCount (scaleIndex));
+        return static_cast<float> (juce::jlimit (0, n - 1, degree)) / static_cast<float> (n - 1);
+    }
+
+    inline int granularMidiNote (int root, int scaleIndex, float noteNorm) noexcept
+    {
+        const int scale = clampScaleIndex (scaleIndex);
+        const int degree = degreeFromNorm (noteNorm, scale);
+        const int interval = scales[static_cast<size_t> (scale)].intervals[degree];
+        const int midi = granularBaseMidi + clampRootIndex (root) + interval;
+        return juce::jlimit (minGranularMidi, maxGranularMidi, midi);
+    }
+
+    inline juce::String midiNoteDisplayName (int midiNote) noexcept
+    {
+        const int n = juce::jlimit (0, 127, midiNote);
+        return juce::String (pitchClassNames[n % numPitchClasses]) + juce::String (n / 12 - 2);
+    }
+
     inline float cutoffHzFromNorm (float norm) noexcept
     {
         const float n = juce::jlimit (0.0f, 1.0f, norm);
@@ -330,6 +420,10 @@ namespace stutter
         int loopUnfreeze = 0;    // 0 keeps the capture from the gesture start
         int loopPeriod = 3;      // 0=1 beat .. 4=2 bars
         int pingPong = 0;        // 0 wrap 4 beats, 1 forward then reverse (8-beat cycle)
+        int granularRoot = 0;    // 0=C .. 11=B
+        int granularScale = 0;   // index into scales[]
+        int granularEngine = 0;  // 0 Grain, 1 Resonator
+        float granularMix = 1.0f;
         float curves[numCurves][maxSteps] {};
     };
 
@@ -374,10 +468,16 @@ namespace stutter
         action.loopUnfreeze = 0;
         action.loopPeriod = 3;
         action.pingPong = 0;
+        action.granularRoot = 0;
+        action.granularScale = 0;
+        action.granularEngine = pitchEngineGrain;
+        action.granularMix = 1.0f;
 
         fillCurve (action, Curve::Division, divisionToNorm (div1_16));
         fillCurve (action, Curve::Reverse, 0.0f);
         fillCurve (action, Curve::AltPan, 0.0f);
+        fillCurve (action, Curve::GranularOn, 0.0f);
+        fillCurve (action, Curve::GranularNote, 0.0f);
         fillCurve (action, Curve::FuzzGain, 0.0f);
         fillCurve (action, Curve::FilterOn, 0.0f);
         fillCurve (action, Curve::FilterCutoff, cutoffNormFromHz (12000.0f));
@@ -452,6 +552,8 @@ namespace stutter
         int divisionIndex = div1_16;
         bool reverse = false;
         bool altPan = false;
+        bool granularOn = false;
+        int granularMidiNote = granularBaseMidi;
         float fuzzGain = 0.0f;
         bool filterOn = false;
         float cutoffHz = 12000.0f;
@@ -480,6 +582,8 @@ namespace stutter
         out.divisionIndex = divisionFromNorm (at (Curve::Division));
         out.reverse = gateFromNorm (at (Curve::Reverse));
         out.altPan = gateFromNorm (at (Curve::AltPan));
+        out.granularOn = gateFromNorm (at (Curve::GranularOn));
+        out.granularMidiNote = granularMidiNote (action.granularRoot, action.granularScale, at (Curve::GranularNote));
         out.fuzzGain = juce::jlimit (0.0f, 1.0f, at (Curve::FuzzGain));
         out.filterOn = gateFromNorm (at (Curve::FilterOn));
         out.cutoffHz = cutoffHzFromNorm (at (Curve::FilterCutoff));
@@ -504,6 +608,8 @@ namespace stutter
             case Curve::Division:        return "Division";
             case Curve::Reverse:         return "Reverse";
             case Curve::AltPan:          return "Alt Pan";
+            case Curve::GranularOn:      return "Grain On";
+            case Curve::GranularNote:    return "Note";
             case Curve::FuzzGain:        return "Gain";
             case Curve::FilterOn:        return "Filter On";
             case Curve::FilterCutoff:    return "Cutoff";
@@ -528,10 +634,16 @@ namespace stutter
     {
         return curve == Curve::Reverse
             || curve == Curve::AltPan
+            || curve == Curve::GranularOn
             || curve == Curve::FilterOn
             || curve == Curve::LoFiOn
             || curve == Curve::DelayOn
             || curve == Curve::ReverbOn;
+    }
+
+    inline bool isPitchCurve (Curve curve) noexcept
+    {
+        return curve == Curve::GranularNote;
     }
 
     inline bool isDivisionCurve (Curve curve) noexcept

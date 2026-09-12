@@ -3,7 +3,13 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the public display version now matches the CMake semver (`0.0.8`).
+and the public display version now matches the CMake semver (`0.0.9`).
+
+## [0.0.9] - 2026-09-12
+
+### Added
+
+- Pitch module after the stutter loop: Grain (frozen period-locked grain) or Resonator (comb filter at 1/f0), with On/Note lanes, root, scale, and module mix
 
 ## [0.0.8] - 2026-09-11
 

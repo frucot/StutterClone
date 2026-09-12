@@ -21,6 +21,10 @@ juce::String CurveLane::valueLabel (float norm) const
     if (stutter::isDivisionCurve (curve))
         return stutter::divisionNames[stutter::divisionFromNorm (norm)];
 
+    if (stutter::isPitchCurve (curve) && action != nullptr)
+        return stutter::midiNoteDisplayName (
+            stutter::granularMidiNote (action->granularRoot, action->granularScale, norm));
+
     if (stutter::isGateCurve (curve))
         return stutter::gateFromNorm (norm) ? "On" : "Off";
 
@@ -49,6 +53,9 @@ float CurveLane::valueFromY (int y) const noexcept
 
     if (stutter::isDivisionCurve (curve))
         return stutter::divisionToNorm (stutter::divisionFromDurationNorm (n));
+
+    if (stutter::isPitchCurve (curve) && action != nullptr)
+        return stutter::degreeToNorm (stutter::degreeFromNorm (n, action->granularScale), action->granularScale);
 
     return n;
 }
@@ -118,7 +125,10 @@ void CurveLane::paint (juce::Graphics& g)
         {
             const float n = stutter::isDivisionCurve (curve)
                                 ? stutter::durationNormFromDivision (stutter::divisionFromNorm (stored))
-                                : stored;
+                                : (stutter::isPitchCurve (curve)
+                                       ? stutter::degreeToNorm (stutter::degreeFromNorm (stored, action->granularScale),
+                                                                action->granularScale)
+                                       : stored);
             const float h = juce::jmax (2.0f, n * (bounds.getHeight() - 4.0f));
             const float y = bounds.getBottom() - 2.0f - h;
 

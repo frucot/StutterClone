@@ -36,6 +36,10 @@ private:
     juce::ComboBox gridBox;
     juce::ComboBox filterTypeBox;
     juce::ComboBox delayDivBox;
+    juce::ComboBox granularEngineBox;
+    juce::ComboBox granularRootBox;
+    juce::ComboBox granularScaleBox;
+    juce::Slider granularMixSlider;
     juce::Label loopPeriodLabel;
     juce::ComboBox loopPeriodBox;
     juce::ToggleButton delayCutButton { "Delay Cut" };
